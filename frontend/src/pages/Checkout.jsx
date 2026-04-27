@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
-import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import PageLayout from "../components/PageLayout";
 
 export default function Checkout() {
   const [form, setForm] = useState({
@@ -18,16 +17,19 @@ export default function Checkout() {
     { id: 2, name: "Collector Figurine", price: 89.9, quantity: 1 },
   ]);
 
-  const subtotal = useMemo(
-    () => cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0),
-    [cartItems]
-  );
+  const subtotal = useMemo(() => {
+    return cartItems.reduce(
+      (sum, item) => sum + Number(item.price) * Number(item.quantity),
+      0
+    );
+  }, [cartItems]);
 
   const shippingFee = subtotal > 100 ? 0 : 5.99;
   const total = subtotal + shippingFee;
 
   function handleChange(e) {
     const { name, value } = e.target;
+
     setForm((prev) => ({
       ...prev,
       [name]: value,
@@ -40,11 +42,10 @@ export default function Checkout() {
   }
 
   return (
-    <div className="min-h-screen bg-sky-50">
-      <Navbar />
-
+    <PageLayout>
       <main className="mx-auto max-w-7xl px-6 py-16">
         <h1 className="text-4xl font-black text-slate-900">Checkout</h1>
+
         <p className="mt-2 text-slate-500">
           Review your order and fill in your shipping details
         </p>
@@ -63,6 +64,7 @@ export default function Checkout() {
                 <label className="mb-2 block text-sm font-medium text-slate-700">
                   Full Name
                 </label>
+
                 <input
                   name="fullName"
                   value={form.fullName}
@@ -77,6 +79,7 @@ export default function Checkout() {
                 <label className="mb-2 block text-sm font-medium text-slate-700">
                   Email
                 </label>
+
                 <input
                   name="email"
                   value={form.email}
@@ -91,6 +94,7 @@ export default function Checkout() {
                 <label className="mb-2 block text-sm font-medium text-slate-700">
                   Phone
                 </label>
+
                 <input
                   name="phone"
                   value={form.phone}
@@ -105,6 +109,7 @@ export default function Checkout() {
                 <label className="mb-2 block text-sm font-medium text-slate-700">
                   Postal Code
                 </label>
+
                 <input
                   name="postalCode"
                   value={form.postalCode}
@@ -120,6 +125,7 @@ export default function Checkout() {
               <label className="mb-2 block text-sm font-medium text-slate-700">
                 Address Line 1
               </label>
+
               <input
                 name="addressLine1"
                 value={form.addressLine1}
@@ -134,6 +140,7 @@ export default function Checkout() {
               <label className="mb-2 block text-sm font-medium text-slate-700">
                 Address Line 2
               </label>
+
               <input
                 name="addressLine2"
                 value={form.addressLine2}
@@ -148,6 +155,7 @@ export default function Checkout() {
               <label className="mb-2 block text-sm font-medium text-slate-700">
                 Country
               </label>
+
               <input
                 name="country"
                 value={form.country}
@@ -176,10 +184,12 @@ export default function Checkout() {
                 >
                   <div>
                     <p className="font-semibold text-slate-900">{item.name}</p>
+
                     <p className="text-sm text-slate-500">
                       Qty: {item.quantity}
                     </p>
                   </div>
+
                   <p className="font-semibold text-slate-900">
                     ${(item.price * item.quantity).toFixed(2)}
                   </p>
@@ -208,8 +218,6 @@ export default function Checkout() {
           </aside>
         </div>
       </main>
-
-      <Footer />
-    </div>
+    </PageLayout>
   );
 }

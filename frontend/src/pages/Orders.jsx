@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import PageLayout from "../components/PageLayout";
 import { orderService } from "../services/orderService";
 
 export default function Orders() {
@@ -17,6 +16,7 @@ export default function Orders() {
         const data = await orderService.getMyOrders();
         setOrders(Array.isArray(data) ? data : []);
       } catch (err) {
+        console.error("Load orders error:", err);
         setError(err.message || "Failed to load orders.");
       } finally {
         setLoading(false);
@@ -27,11 +27,10 @@ export default function Orders() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-sky-50">
-      <Navbar />
-
+    <PageLayout>
       <main className="mx-auto max-w-6xl px-6 py-16">
         <h1 className="text-4xl font-black text-slate-900">My Orders</h1>
+
         <p className="mt-2 text-slate-500">
           Track your purchases and order history
         </p>
@@ -61,6 +60,7 @@ export default function Orders() {
                       <p className="text-sm font-semibold text-slate-500">
                         Order ID
                       </p>
+
                       <p className="text-lg font-bold text-slate-900">
                         {order.id}
                       </p>
@@ -70,8 +70,11 @@ export default function Orders() {
                       <p className="text-sm font-semibold text-slate-500">
                         Date
                       </p>
+
                       <p className="text-slate-900">
-                        {new Date(order.createdAt).toLocaleDateString()}
+                        {order.createdAt
+                          ? new Date(order.createdAt).toLocaleDateString()
+                          : "-"}
                       </p>
                     </div>
 
@@ -79,8 +82,9 @@ export default function Orders() {
                       <p className="text-sm font-semibold text-slate-500">
                         Status
                       </p>
+
                       <p className="font-semibold text-blue-600">
-                        {order.status}
+                        {order.status || "pending"}
                       </p>
                     </div>
 
@@ -88,6 +92,7 @@ export default function Orders() {
                       <p className="text-sm font-semibold text-slate-500">
                         Total
                       </p>
+
                       <p className="font-bold text-slate-900">
                         ${Number(order.totalAmount || 0).toFixed(2)}
                       </p>
@@ -95,11 +100,15 @@ export default function Orders() {
                   </div>
 
                   <div className="mt-6 border-t border-slate-200 pt-4">
-                    <p className="text-sm font-semibold text-slate-500">Items</p>
+                    <p className="text-sm font-semibold text-slate-500">
+                      Items
+                    </p>
+
                     <ul className="mt-2 space-y-1 text-slate-700">
                       {(order.items || []).map((item) => (
                         <li key={item.id}>
-                          • {item.product?.title || "Product"} x {item.quantity}
+                          • {item.product?.title || "Product"} x{" "}
+                          {item.quantity}
                         </li>
                       ))}
                     </ul>
@@ -110,8 +119,6 @@ export default function Orders() {
           </div>
         )}
       </main>
-
-      <Footer />
-    </div>
+    </PageLayout>
   );
 }

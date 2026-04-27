@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import Navbar from "../components/Navbar";
 import ProductCard from "../components/ProductCard";
-import Footer from "../components/Footer";
+import PageLayout from "../components/PageLayout";
 import { productService } from "../services/productService";
 
 export default function Products() {
@@ -27,8 +26,10 @@ export default function Products() {
           search,
           sort,
         });
-        setProducts(data);
+
+        setProducts(Array.isArray(data) ? data : []);
       } catch (err) {
+        console.error("Load products error:", err);
         setError(err.message || "Failed to fetch products.");
       } finally {
         setLoading(false);
@@ -52,13 +53,13 @@ export default function Products() {
   }
 
   return (
-    <div className="min-h-screen bg-sky-50">
-      <Navbar />
-
+    <PageLayout>
       <main className="mx-auto max-w-7xl px-6 py-16">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="text-4xl font-black text-slate-900">All Products</h1>
+            <h1 className="text-4xl font-black text-slate-900">
+              All Products
+            </h1>
 
             <p className="mt-2 text-slate-500">
               {category
@@ -73,6 +74,7 @@ export default function Products() {
             <label className="mb-2 block text-sm font-medium text-slate-700">
               Sort By
             </label>
+
             <select
               value={sort}
               onChange={handleSortChange}
@@ -87,7 +89,9 @@ export default function Products() {
         </div>
 
         {loading ? (
-          <div className="py-16 text-center text-slate-600">Loading products...</div>
+          <div className="py-16 text-center text-slate-600">
+            Loading products...
+          </div>
         ) : error ? (
           <div className="mt-8 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
@@ -104,8 +108,6 @@ export default function Products() {
           </div>
         )}
       </main>
-
-      <Footer />
-    </div>
+    </PageLayout>
   );
 }

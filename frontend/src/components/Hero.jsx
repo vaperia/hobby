@@ -1,7 +1,12 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 export default function Hero() {
+  const { user, isAuthenticated } = useAuth();
+
+  const isSeller = user?.role === "seller" || user?.role === "admin";
+
   return (
     <section className="bg-sky-50">
       <div className="mx-auto grid max-w-7xl gap-4 px-6 py-8 md:grid-cols-3">
@@ -16,10 +21,11 @@ export default function Hero() {
             </h1>
 
             <p className="mt-4 max-w-lg text-slate-700">
-              Shop TCG cards, figurines, and albums all in one place with a clean marketplace-style experience.
+              Shop TCG cards, figurines, and albums all in one place with a
+              clean marketplace-style experience.
             </p>
 
-            <div className="mt-6 flex gap-4">
+            <div className="mt-6 flex flex-wrap gap-4">
               <Link
                 to="/products"
                 className="rounded-md bg-gradient-to-r from-blue-600 to-sky-500 px-5 py-3 text-sm font-semibold text-white hover:from-blue-700 hover:to-sky-600"
@@ -27,12 +33,30 @@ export default function Hero() {
                 Shop Now
               </Link>
 
-              <Link
-                to="/register"
-                className="rounded-md border border-orange-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 hover:bg-orange-50"
-              >
-                Join Now
-              </Link>
+              {isAuthenticated ? (
+                isSeller ? (
+                  <Link
+                    to="/seller"
+                    className="rounded-md border border-orange-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 hover:bg-orange-50"
+                  >
+                    Seller Dashboard
+                  </Link>
+                ) : (
+                  <Link
+                    to="/profile"
+                    className="rounded-md border border-orange-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 hover:bg-orange-50"
+                  >
+                    My Profile
+                  </Link>
+                )
+              ) : (
+                <Link
+                  to="/register"
+                  className="rounded-md border border-orange-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 hover:bg-orange-50"
+                >
+                  Join Now
+                </Link>
+              )}
             </div>
           </div>
         </div>

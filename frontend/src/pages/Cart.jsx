@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import PageLayout from "../components/PageLayout";
 import { cartService } from "../services/cartService";
 import { useAuth } from "../context/AuthContext";
 
@@ -28,6 +27,7 @@ export default function Cart() {
         const data = await cartService.getCart();
         setCart(data || { items: [] });
       } catch (err) {
+        console.error("Load cart error:", err);
         setError(err.message || "Failed to load cart.");
       } finally {
         setLoading(false);
@@ -42,7 +42,7 @@ export default function Cart() {
   const subtotal = useMemo(() => {
     return items.reduce((sum, item) => {
       const price = Number(item.price ?? item.product?.price ?? 0);
-      return sum + price * item.quantity;
+      return sum + price * Number(item.quantity || 0);
     }, 0);
   }, [items]);
 
@@ -54,6 +54,7 @@ export default function Cart() {
 
     try {
       await cartService.updateItem(itemId, nextQuantity);
+
       setCart((prev) => ({
         ...prev,
         items: prev.items.map((item) =>
@@ -61,6 +62,7 @@ export default function Cart() {
         ),
       }));
     } catch (err) {
+      console.error("Update cart item error:", err);
       setError(err.message || "Failed to update item quantity.");
     } finally {
       setUpdatingId(null);
@@ -73,11 +75,13 @@ export default function Cart() {
 
     try {
       await cartService.removeItem(itemId);
+
       setCart((prev) => ({
         ...prev,
         items: prev.items.filter((item) => item.id !== itemId),
       }));
     } catch (err) {
+      console.error("Remove cart item error:", err);
       setError(err.message || "Failed to remove item.");
     } finally {
       setUpdatingId(null);
@@ -91,20 +95,22 @@ export default function Cart() {
       await cartService.clearCart();
       setCart({ items: [] });
     } catch (err) {
+      console.error("Clear cart error:", err);
       setError(err.message || "Failed to clear cart.");
     }
   }
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-sky-50">
-        <Navbar />
+      <PageLayout>
         <main className="mx-auto max-w-5xl px-6 py-16">
           <h1 className="text-4xl font-black text-slate-900">Your Cart</h1>
+
           <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
             <p className="text-slate-600">
               Please log in to view and manage your cart.
             </p>
+
             <div className="mt-6 flex gap-4">
               <Link
                 to="/login"
@@ -112,6 +118,7 @@ export default function Cart() {
               >
                 Login
               </Link>
+
               <Link
                 to="/products"
                 className="rounded-2xl border border-slate-300 px-6 py-3 font-semibold text-slate-700"
@@ -121,19 +128,17 @@ export default function Cart() {
             </div>
           </div>
         </main>
-        <Footer />
-      </div>
+      </PageLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-sky-50">
-      <Navbar />
-
+    <PageLayout>
       <main className="mx-auto max-w-6xl px-6 py-16">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
             <h1 className="text-4xl font-black text-slate-900">Your Cart</h1>
+
             <p className="mt-2 text-slate-500">
               Review your items before checkout
             </p>
@@ -151,7 +156,9 @@ export default function Cart() {
         </div>
 
         {loading ? (
-          <div className="py-16 text-center text-slate-600">Loading cart...</div>
+          <div className="py-16 text-center text-slate-600">
+            Loading cart...
+          </div>
         ) : error ? (
           <div className="mt-8 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
@@ -159,6 +166,7 @@ export default function Cart() {
         ) : items.length === 0 ? (
           <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
             <p className="text-slate-600">Your cart is empty for now.</p>
+
             <Link
               to="/products"
               className="mt-6 inline-block rounded-2xl bg-cyan-400 px-6 py-3 font-semibold text-slate-950"
@@ -171,8 +179,17 @@ export default function Cart() {
             <section className="space-y-4">
               {items.map((item) => {
                 const product = item.product || {};
-                const itemName = product.name || item.name || "Product";
-                const itemImage = product.image || item.image || "";
+                const itemName =
+                  product.title || product.name || item.name || "Product";
+
+                const itemImage =
+                  product.imageUrl ||
+                  product.image_url ||
+                  product.image ||
+                  item.imageUrl ||
+                  item.image ||
+                  "";
+
                 const itemPrice = Number(item.price ?? product.price ?? 0);
 
                 return (
@@ -181,20 +198,24 @@ export default function Cart() {
                     className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
                   >
                     <div className="flex flex-col gap-4 sm:flex-row">
-                      <img
-                        src={
-                          itemImage ||
-                          "https://via.placeholder.com/160x160?text=No+Image"
-                        }
-                        alt={itemName}
-                        className="h-32 w-32 rounded-xl object-cover"
-                      />
+                      {itemImage ? (
+                        <img
+                          src={itemImage}
+                          alt={itemName}
+                          className="h-32 w-32 rounded-xl object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-32 w-32 items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-400">
+                          No image
+                        </div>
+                      )}
 
                       <div className="flex flex-1 flex-col justify-between gap-4">
                         <div>
                           <h2 className="text-lg font-bold text-slate-900">
                             {itemName}
                           </h2>
+
                           <p className="mt-1 text-sm text-slate-500">
                             ${itemPrice.toFixed(2)} each
                           </p>
@@ -207,7 +228,9 @@ export default function Cart() {
                               onClick={() =>
                                 handleQuantityChange(item.id, item.quantity - 1)
                               }
-                              disabled={updatingId === item.id || item.quantity <= 1}
+                              disabled={
+                                updatingId === item.id || item.quantity <= 1
+                              }
                               className="h-10 w-10 rounded-md border border-slate-300 text-lg font-bold text-slate-700 disabled:opacity-50"
                             >
                               -
@@ -284,8 +307,6 @@ export default function Cart() {
           </div>
         )}
       </main>
-
-      <Footer />
-    </div>
+    </PageLayout>
   );
 }

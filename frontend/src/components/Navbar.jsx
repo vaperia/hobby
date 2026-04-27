@@ -7,10 +7,13 @@ export default function Navbar() {
   const { user, isAuthenticated, logout } = useAuth();
   const [search, setSearch] = useState("");
 
+  const isSeller = user?.role === "seller" || user?.role === "admin";
+
   function handleSubmit(e) {
     e.preventDefault();
 
     const trimmed = search.trim();
+
     if (!trimmed) {
       navigate("/products");
       return;
@@ -43,6 +46,7 @@ export default function Navbar() {
               placeholder="Search for TCG, Figurine, Album..."
               className="w-full px-4 py-3 text-sm text-slate-800 outline-none"
             />
+
             <button
               type="submit"
               className="bg-gradient-to-r from-red-500 to-orange-500 px-6 text-sm font-semibold text-white hover:from-red-600 hover:to-orange-600"
@@ -55,30 +59,36 @@ export default function Navbar() {
             <Link to="/" className="hover:text-orange-200">
               Home
             </Link>
+
             <Link to="/products?category=TCG" className="hover:text-orange-200">
               TCG
             </Link>
-            <Link to="/products?category=Figurine" className="hover:text-orange-200">
+
+            <Link
+              to="/products?category=Figurine"
+              className="hover:text-orange-200"
+            >
               Figurine
             </Link>
-            <Link to="/products?category=Album" className="hover:text-orange-200">
+
+            <Link
+              to="/products?category=Album"
+              className="hover:text-orange-200"
+            >
               Album
             </Link>
+
             <Link to="/cart" className="hover:text-orange-200">
               Cart
             </Link>
 
             {isAuthenticated ? (
               <>
-                <Link to="/profile" className="hover:text-orange-200">
-                  {user?.username || "Profile"}
-                </Link>
-
                 <Link to="/orders" className="hover:text-orange-200">
                   Orders
                 </Link>
 
-                {(user?.role === "seller" || user?.role === "admin") && (
+                {isSeller && (
                   <Link to="/seller" className="hover:text-orange-200">
                     Seller Dashboard
                   </Link>
@@ -97,6 +107,7 @@ export default function Navbar() {
                 <Link to="/login" className="hover:text-orange-200">
                   Login
                 </Link>
+
                 <Link to="/register" className="hover:text-orange-200">
                   Register
                 </Link>
