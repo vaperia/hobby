@@ -60,6 +60,10 @@ export default function Navbar() {
               Home
             </Link>
 
+            <Link to="/products" className="hover:text-orange-200">
+              View All Products
+            </Link>
+
             <Link to="/products?category=TCG" className="hover:text-orange-200">
               TCG
             </Link>

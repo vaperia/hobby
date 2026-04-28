@@ -13,6 +13,7 @@ const initialForm = {
   category: "TCG",
   condition: "New",
   image: null,
+  deliveryMethods: ["SELF_COLLECTION", "STANDARD_DELIVERY"],
 };
 
 export default function CreateListing() {
@@ -37,12 +38,33 @@ export default function CreateListing() {
     }));
   }
 
+  function handleDeliveryMethodChange(method) {
+    setForm((prev) => {
+      const currentMethods = prev.deliveryMethods || [];
+
+      const updatedMethods = currentMethods.includes(method)
+        ? currentMethods.filter((item) => item !== method)
+        : [...currentMethods, method];
+
+      return {
+        ...prev,
+        deliveryMethods: updatedMethods,
+      };
+    });
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
 
     setLoading(true);
     setMessage("");
     setError("");
+
+    if (!form.deliveryMethods.length) {
+      setError("Please select at least one delivery method.");
+      setLoading(false);
+      return;
+    }
 
     try {
       const formData = new FormData();
@@ -54,6 +76,7 @@ export default function CreateListing() {
       formData.append("stock", form.stock);
       formData.append("category", form.category);
       formData.append("condition", form.condition);
+      formData.append("deliveryMethods", JSON.stringify(form.deliveryMethods));
 
       if (form.image) {
         formData.append("image", form.image);
@@ -207,6 +230,54 @@ export default function CreateListing() {
                     <option value="Like New">Like New</option>
                     <option value="Used">Used</option>
                   </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  Available Delivery Methods
+                </label>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="cursor-pointer rounded-xl border border-slate-300 p-4 hover:border-sky-500">
+                    <input
+                      type="checkbox"
+                      checked={form.deliveryMethods.includes("SELF_COLLECTION")}
+                      onChange={() =>
+                        handleDeliveryMethodChange("SELF_COLLECTION")
+                      }
+                      className="mr-2"
+                    />
+
+                    <span className="font-semibold text-slate-900">
+                      Self Collection
+                    </span>
+
+                    <p className="mt-1 text-sm text-slate-500">
+                      Buyer collects directly from you.
+                    </p>
+                  </label>
+
+                  <label className="cursor-pointer rounded-xl border border-slate-300 p-4 hover:border-sky-500">
+                    <input
+                      type="checkbox"
+                      checked={form.deliveryMethods.includes(
+                        "STANDARD_DELIVERY"
+                      )}
+                      onChange={() =>
+                        handleDeliveryMethodChange("STANDARD_DELIVERY")
+                      }
+                      className="mr-2"
+                    />
+
+                    <span className="font-semibold text-slate-900">
+                      Standard Delivery
+                    </span>
+
+                    <p className="mt-1 text-sm text-slate-500">
+                      You can ship this item to the buyer.
+                    </p>
+                  </label>
                 </div>
               </div>
 

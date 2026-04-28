@@ -1,15 +1,28 @@
 import React from "react";
+import { Link } from "react-router-dom";
 
 const categories = [
-  { name: "TCG", icon: "🃏" },
-  { name: "Figurine", icon: "🧸" },
-  { name: "Album", icon: "💿" },
+  {
+    name: "TCG",
+    icon: "🃏",
+    link: "/products?category=TCG",
+  },
+  {
+    name: "Figurine",
+    icon: "🧸",
+    link: "/products?category=Figurine",
+  },
+  {
+    name: "Album",
+    icon: "💿",
+    link: "/products?category=Album",
+  },
 ];
 
 export default function CategoryIcons() {
   return (
     <section className="bg-sky-50">
-      <div className="mx-auto grid max-w-7xl grid-cols-3 gap-6 px-6 py-8">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-6 py-8 sm:grid-cols-2 lg:grid-cols-3">
         {categories.map((category, index) => {
           const circleColors = [
             "bg-purple-100 text-purple-700",
@@ -18,8 +31,9 @@ export default function CategoryIcons() {
           ];
 
           return (
-            <div
+            <Link
               key={category.name}
+              to={category.link}
               className="flex flex-col items-center rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-orange-200 hover:shadow-md"
             >
               <div
@@ -27,8 +41,11 @@ export default function CategoryIcons() {
               >
                 {category.icon}
               </div>
-              <p className="mt-3 text-sm font-semibold text-slate-700">{category.name}</p>
-            </div>
+
+              <p className="mt-3 text-sm font-semibold text-slate-700">
+                {category.name}
+              </p>
+            </Link>
           );
         })}
       </div>

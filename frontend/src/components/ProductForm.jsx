@@ -1,5 +1,7 @@
 import ImageUpload from "./ImageUpload";
 
+const DEFAULT_DELIVERY_METHODS = ["SELF_COLLECTION", "STANDARD_DELIVERY"];
+
 export default function ProductForm({
   form,
   onChange,
@@ -9,9 +11,19 @@ export default function ProductForm({
   submitText = "Save Product",
   existingImageUrl = "",
 }) {
+  const deliveryMethods = form.deliveryMethods || DEFAULT_DELIVERY_METHODS;
+
   function handleInputChange(e) {
     const { name, value } = e.target;
     onChange(name, value);
+  }
+
+  function handleDeliveryMethodChange(method) {
+    const updatedMethods = deliveryMethods.includes(method)
+      ? deliveryMethods.filter((item) => item !== method)
+      : [...deliveryMethods, method];
+
+    onChange("deliveryMethods", updatedMethods);
   }
 
   return (
@@ -122,6 +134,54 @@ export default function ProductForm({
         </div>
       </div>
 
+      <div>
+        <label className="mb-2 block text-sm font-medium text-slate-700">
+          Available Delivery Methods
+        </label>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="cursor-pointer rounded-xl border border-slate-300 p-4 hover:border-sky-500">
+            <input
+              type="checkbox"
+              checked={deliveryMethods.includes("SELF_COLLECTION")}
+              onChange={() => handleDeliveryMethodChange("SELF_COLLECTION")}
+              className="mr-2"
+            />
+
+            <span className="font-semibold text-slate-900">
+              Self Collection
+            </span>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Buyer collects directly from you.
+            </p>
+          </label>
+
+          <label className="cursor-pointer rounded-xl border border-slate-300 p-4 hover:border-sky-500">
+            <input
+              type="checkbox"
+              checked={deliveryMethods.includes("STANDARD_DELIVERY")}
+              onChange={() => handleDeliveryMethodChange("STANDARD_DELIVERY")}
+              className="mr-2"
+            />
+
+            <span className="font-semibold text-slate-900">
+              Standard Delivery
+            </span>
+
+            <p className="mt-1 text-sm text-slate-500">
+              You can ship this item to the buyer.
+            </p>
+          </label>
+        </div>
+
+        {deliveryMethods.length === 0 && (
+          <p className="mt-2 text-sm text-red-600">
+            Please select at least one delivery method.
+          </p>
+        )}
+      </div>
+
       <ImageUpload
         value={form.image || existingImageUrl}
         onChange={onImageChange}
@@ -130,7 +190,7 @@ export default function ProductForm({
 
       <button
         type="submit"
-        disabled={loading}
+        disabled={loading || deliveryMethods.length === 0}
         className="w-full rounded-md bg-gradient-to-r from-purple-700 via-blue-600 to-orange-500 py-3 font-semibold text-white hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-70"
       >
         {loading ? "Saving..." : submitText}
