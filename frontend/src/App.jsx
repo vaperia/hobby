@@ -10,6 +10,11 @@ import Profile from "./pages/Profile";
 import Checkout from "./pages/Checkout";
 import Orders from "./pages/Orders";
 import Help from "./pages/Help";
+import Auctions from "./pages/Auctions";
+import AuctionDetails from "./pages/AuctionDetails";
+import CreateAuction from "./pages/CreateAuction";
+import EditAuction from "./pages/EditAuction";
+import SellerAuctions from "./pages/SellerAuctions";
 import SellerDashboard from "./pages/SellerDashboard";
 import SellerOrders from "./pages/SellerOrders";
 import SellerReports from "./pages/SellerReports";
@@ -24,6 +29,8 @@ export default function App() {
       <Route path="/" element={<Home />} />
       <Route path="/products" element={<Products />} />
       <Route path="/products/:id" element={<ProductDetails />} />
+      <Route path="/auctions" element={<Auctions />} />
+      <Route path="/auctions/:id" element={<AuctionDetails />} />
       <Route path="/cart" element={<Cart />} />
       <Route path="/help" element={<Help />} />
       <Route path="/login" element={<Login />} />
@@ -88,6 +95,33 @@ export default function App() {
         element={
           <ProtectedRoute allowedRoles={["seller", "admin"]}>
             <SellerShop />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/seller/auctions"
+        element={
+          <ProtectedRoute allowedRoles={["seller", "admin"]}>
+            <SellerAuctions />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/seller/auctions/new"
+        element={
+          <ProtectedRoute allowedRoles={["seller", "admin"]}>
+            <CreateAuction />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/seller/auctions/:id/edit"
+        element={
+          <ProtectedRoute allowedRoles={["seller", "admin"]}>
+            <EditAuction />
           </ProtectedRoute>
         }
       />

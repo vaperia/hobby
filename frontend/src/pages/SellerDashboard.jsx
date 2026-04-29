@@ -23,7 +23,11 @@ function getNextOrderStatus(order) {
   const status = order.status || "pending";
   const shippingMethod = order.shippingMethod;
 
-  if (status === "cancelled" || status === "completed" || status === "collected") {
+  if (
+    status === "cancelled" ||
+    status === "completed" ||
+    status === "collected"
+  ) {
     return null;
   }
 
@@ -212,8 +216,18 @@ export default function SellerDashboard() {
     },
     {
       title: "Create Listing",
-      description: "Add a new product to your shop.",
+      description: "Add a fixed-price product to your shop.",
       link: "/seller/products/new",
+    },
+    {
+      title: "Manage Auctions",
+      description: "View auction listings, bidders, and payment deadlines.",
+      link: "/seller/auctions",
+    },
+    {
+      title: "Create Auction",
+      description: "Create an auction with bidding and optional buyout.",
+      link: "/seller/auctions/new",
     },
   ];
 
@@ -227,17 +241,26 @@ export default function SellerDashboard() {
             </h1>
 
             <p className="mt-2 text-slate-500">
-              Manage listings, customer orders, revenue reports, and shop
-              performance.
+              Manage listings, customer orders, auctions, revenue reports, and
+              shop performance.
             </p>
           </div>
 
-          <Link
-            to="/seller/products/new"
-            className="inline-flex rounded-md bg-gradient-to-r from-purple-700 via-blue-600 to-orange-500 px-5 py-3 font-semibold text-white hover:opacity-95"
-          >
-            Create New Listing
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              to="/seller/products/new"
+              className="inline-flex rounded-md bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700"
+            >
+              Create Listing
+            </Link>
+
+            <Link
+              to="/seller/auctions/new"
+              className="inline-flex rounded-md bg-gradient-to-r from-purple-700 via-blue-600 to-orange-500 px-5 py-3 font-semibold text-white hover:opacity-95"
+            >
+              Create Auction
+            </Link>
+          </div>
         </div>
 
         {loading ? (
@@ -280,7 +303,7 @@ export default function SellerDashboard() {
                 Quick Actions
               </h2>
 
-              <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+              <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                 {quickActions.map((action) => (
                   <Link
                     key={action.title}
@@ -342,7 +365,9 @@ export default function SellerDashboard() {
 
                         return (
                           <tr
-                            key={`${order.id}-${order.orderItemId || order.item}`}
+                            key={`${order.id}-${
+                              order.orderItemId || order.item
+                            }`}
                             className="border-b border-slate-100"
                           >
                             <td className="py-4 pr-4 font-semibold text-slate-900">

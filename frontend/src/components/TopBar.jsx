@@ -164,6 +164,10 @@ export default function TopBar() {
               <Link to="/seller/reports" className="hover:text-orange-200">
                 Sales Report
               </Link>
+
+              <Link to="/seller/auctions" className="hover:text-orange-200">
+                Seller Auctions
+              </Link>
             </>
           ) : (
             <>

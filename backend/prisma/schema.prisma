@@ -23,6 +23,10 @@ model User {
   listings  Listing[]
   cartItems CartItem[]
   orders    Order[]
+
+  auctionsSelling Auction[] @relation("AuctionSeller")
+  auctionsWon     Auction[] @relation("AuctionWinner")
+  auctionBids     Bid[]     @relation("AuctionBidder")
 }
 
 model Listing {
@@ -84,4 +88,49 @@ model OrderItem {
 
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Listing @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model Auction {
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  imageUrl     String?
+  category     String?
+  condition    String?
+
+  startingBid  Float
+  currentBid   Float?
+  bidIncrement Float    @default(1)
+  buyoutPrice  Float?
+
+  startsAt DateTime @default(now())
+  endsAt   DateTime
+  status   String   @default("ACTIVE")
+
+  winnerId     String?
+  winnerRank   Int       @default(0)
+  winnerSource String?
+  paymentDueAt DateTime?
+  paidAt       DateTime?
+
+  sellerId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  seller User  @relation("AuctionSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  winner User? @relation("AuctionWinner", fields: [winnerId], references: [id], onDelete: SetNull)
+  bids   Bid[]
+}
+
+model Bid {
+  id        String   @id @default(cuid())
+  amount    Float
+  createdAt DateTime @default(now())
+
+  auctionId String
+  bidderId  String
+
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidder  User    @relation("AuctionBidder", fields: [bidderId], references: [id], onDelete: Cascade)
 }

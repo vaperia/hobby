@@ -64,6 +64,10 @@ export default function Navbar() {
               View All Products
             </Link>
 
+            <Link to="/auctions" className="hover:text-orange-200">
+              Auctions
+            </Link>
+
             <Link to="/products?category=TCG" className="hover:text-orange-200">
               TCG
             </Link>
