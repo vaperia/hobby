@@ -4,6 +4,16 @@ import PageLayout from "../components/PageLayout";
 import { cartService } from "../services/cartService";
 import { useAuth } from "../context/AuthContext";
 
+function getItemPrice(item) {
+  return Number(
+    item.price ??
+      item.product?.price ??
+      item.auction?.currentBid ??
+      item.auction?.startingBid ??
+      0
+  );
+}
+
 export default function Cart() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
@@ -41,8 +51,8 @@ export default function Cart() {
 
   const subtotal = useMemo(() => {
     return items.reduce((sum, item) => {
-      const price = Number(item.price ?? item.product?.price ?? 0);
-      return sum + price * Number(item.quantity || 0);
+      const price = getItemPrice(item);
+      return sum + price * Number(item.quantity || 1);
     }, 0);
   }, [items]);
 
@@ -179,18 +189,25 @@ export default function Cart() {
             <section className="space-y-4">
               {items.map((item) => {
                 const product = item.product || {};
-                const itemName =
-                  product.title || product.name || item.name || "Product";
+                const auction = item.auction || {};
+                const isAuctionItem = Boolean(item.auctionId || item.auction);
 
-                const itemImage =
-                  product.imageUrl ||
-                  product.image_url ||
-                  product.image ||
-                  item.imageUrl ||
-                  item.image ||
-                  "";
+                const itemName = isAuctionItem
+                  ? auction.title || "Auction Item"
+                  : product.title || product.name || item.name || "Product";
 
-                const itemPrice = Number(item.price ?? product.price ?? 0);
+                const itemImage = isAuctionItem
+                  ? auction.imageUrl || ""
+                  : product.imageUrl ||
+                    product.image_url ||
+                    product.image ||
+                    item.imageUrl ||
+                    item.image ||
+                    "";
+
+                const itemPrice = getItemPrice(item);
+                const quantity = Number(item.quantity || 1);
+                const itemTotal = itemPrice * quantity;
 
                 return (
                   <div
@@ -212,49 +229,78 @@ export default function Cart() {
 
                       <div className="flex flex-1 flex-col justify-between gap-4">
                         <div>
-                          <h2 className="text-lg font-bold text-slate-900">
-                            {itemName}
-                          </h2>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h2 className="text-lg font-bold text-slate-900">
+                              {itemName}
+                            </h2>
+
+                            {isAuctionItem && (
+                              <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700">
+                                Auction Win
+                              </span>
+                            )}
+                          </div>
 
                           <p className="mt-1 text-sm text-slate-500">
-                            ${itemPrice.toFixed(2)} each
+                            {isAuctionItem
+                              ? `Winning bid: $${itemPrice.toFixed(2)}`
+                              : `$${itemPrice.toFixed(2)} each`}
                           </p>
+
+                          {isAuctionItem && auction.paymentDueAt && (
+                            <p className="mt-1 text-sm text-orange-600">
+                              Payment due by{" "}
+                              {new Date(auction.paymentDueAt).toLocaleString()}
+                            </p>
+                          )}
                         </div>
 
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="flex items-center gap-3">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleQuantityChange(item.id, item.quantity - 1)
-                              }
-                              disabled={
-                                updatingId === item.id || item.quantity <= 1
-                              }
-                              className="h-10 w-10 rounded-md border border-slate-300 text-lg font-bold text-slate-700 disabled:opacity-50"
-                            >
-                              -
-                            </button>
+                          {isAuctionItem ? (
+                            <div className="rounded-md bg-purple-50 px-3 py-2 text-sm font-semibold text-purple-700">
+                              Quantity: 1
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleQuantityChange(
+                                    item.id,
+                                    item.quantity - 1
+                                  )
+                                }
+                                disabled={
+                                  updatingId === item.id || item.quantity <= 1
+                                }
+                                className="h-10 w-10 rounded-md border border-slate-300 text-lg font-bold text-slate-700 disabled:opacity-50"
+                              >
+                                -
+                              </button>
 
-                            <span className="min-w-[24px] text-center font-semibold text-slate-900">
-                              {item.quantity}
-                            </span>
+                              <span className="min-w-[24px] text-center font-semibold text-slate-900">
+                                {item.quantity}
+                              </span>
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleQuantityChange(item.id, item.quantity + 1)
-                              }
-                              disabled={updatingId === item.id}
-                              className="h-10 w-10 rounded-md border border-slate-300 text-lg font-bold text-slate-700 disabled:opacity-50"
-                            >
-                              +
-                            </button>
-                          </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleQuantityChange(
+                                    item.id,
+                                    item.quantity + 1
+                                  )
+                                }
+                                disabled={updatingId === item.id}
+                                className="h-10 w-10 rounded-md border border-slate-300 text-lg font-bold text-slate-700 disabled:opacity-50"
+                              >
+                                +
+                              </button>
+                            </div>
+                          )}
 
                           <div className="flex items-center gap-4">
                             <p className="font-bold text-slate-900">
-                              ${(itemPrice * item.quantity).toFixed(2)}
+                              ${itemTotal.toFixed(2)}
                             </p>
 
                             <button

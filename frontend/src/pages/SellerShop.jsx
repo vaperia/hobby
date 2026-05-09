@@ -188,19 +188,28 @@ export default function SellerShop() {
                           ${Number(listing.price || 0).toFixed(2)}
                         </p>
 
-                        <div className="mt-4 flex gap-2">
-                          <Link
-                            to={`/products/${listing.id}`}
-                            className="flex-1 rounded-md bg-slate-100 px-3 py-2 text-center text-sm font-semibold text-slate-700 hover:bg-slate-200"
-                          >
-                            View
-                          </Link>
+                        <div className="mt-4 grid gap-2">
+                          <div className="flex gap-2">
+                            <Link
+                              to={`/products/${listing.id}`}
+                              className="flex-1 rounded-md bg-slate-100 px-3 py-2 text-center text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                            >
+                              View
+                            </Link>
+
+                            <Link
+                              to={`/seller/products/${listing.id}/edit`}
+                              className="flex-1 rounded-md bg-blue-600 px-3 py-2 text-center text-sm font-semibold text-white hover:bg-blue-700"
+                            >
+                              Edit
+                            </Link>
+                          </div>
 
                           <Link
-                            to={`/seller/products/${listing.id}/edit`}
-                            className="flex-1 rounded-md bg-blue-600 px-3 py-2 text-center text-sm font-semibold text-white hover:bg-blue-700"
+                            to={`/seller/products/${listing.id}/convert-to-auction`}
+                            className="rounded-md bg-purple-700 px-3 py-2 text-center text-sm font-semibold text-white hover:bg-purple-800"
                           >
-                            Edit
+                            Move to Auction
                           </Link>
                         </div>
                       </div>

@@ -29,14 +29,6 @@ function maskBidderUsername(bidder) {
   return `${visibleStart}***${visibleEnd}`;
 }
 
-function isPaymentOverdue(auction) {
-  return (
-    auction?.status === "AWAITING_PAYMENT" &&
-    auction?.paymentDueAt &&
-    new Date(auction.paymentDueAt) < new Date()
-  );
-}
-
 export default function AuctionDetails() {
   const { id } = useParams();
   const { user, isAuthenticated } = useAuth();
@@ -53,12 +45,24 @@ export default function AuctionDetails() {
   const isSeller = auction?.sellerId === currentUserId;
   const isWinner = auction?.winnerId === currentUserId;
 
+  const currentBid = auction?.currentBid || auction?.startingBid || 0;
+
   const minimumBid = useMemo(() => {
     if (!auction) return 0;
 
     const base = auction.currentBid || auction.startingBid;
     return Number(base || 0) + Number(auction.bidIncrement || 1);
   }, [auction]);
+
+  const minimumAddAmount = useMemo(() => {
+    if (!auction) return 1;
+
+    return Number(auction.bidIncrement || 1);
+  }, [auction]);
+
+  const previewNewBid = useMemo(() => {
+    return Number(currentBid || 0) + Number(bidAmount || 0);
+  }, [currentBid, bidAmount]);
 
   const loadAuction = useCallback(
     async (options = {}) => {
@@ -105,12 +109,24 @@ export default function AuctionDetails() {
       return;
     }
 
+    const amountToAdd = Number(bidAmount);
+
+    if (!amountToAdd || amountToAdd <= 0) {
+      setError("Please enter an amount greater than 0.");
+      return;
+    }
+
+    if (amountToAdd < minimumAddAmount) {
+      setError(`Minimum amount to add is $${minimumAddAmount.toFixed(2)}.`);
+      return;
+    }
+
     try {
       setActionLoading(true);
       setError("");
       setMessage("");
 
-      await auctionService.placeBid(id, Number(bidAmount));
+      await auctionService.placeBid(id, amountToAdd);
 
       setMessage("Bid placed successfully.");
       await loadAuction({ silent: true });
@@ -143,29 +159,13 @@ export default function AuctionDetails() {
 
       await auctionService.buyout(id);
 
-      setMessage("Buyout successful. Please complete payment within 3 days.");
+      setMessage(
+        "Buyout successful. The auction item has been added to your cart."
+      );
       await loadAuction({ silent: true });
     } catch (err) {
       console.error("Buyout error:", err);
       setError(err.message || "Failed to buyout auction.");
-    } finally {
-      setActionLoading(false);
-    }
-  }
-
-  async function handleMarkPaid() {
-    try {
-      setActionLoading(true);
-      setError("");
-      setMessage("");
-
-      await auctionService.markPaid(id);
-
-      setMessage("Auction marked as paid.");
-      await loadAuction({ silent: true });
-    } catch (err) {
-      console.error("Mark paid error:", err);
-      setError(err.message || "Failed to mark auction as paid.");
     } finally {
       setActionLoading(false);
     }
@@ -191,7 +191,6 @@ export default function AuctionDetails() {
     );
   }
 
-  const currentBid = auction.currentBid || auction.startingBid;
   const active = auction.status === "ACTIVE";
 
   return (
@@ -257,12 +256,25 @@ export default function AuctionDetails() {
                 </p>
               </div>
 
-              <div>
-                <p className="text-sm text-slate-500">Minimum Next Bid</p>
-                <p className="text-xl font-bold text-slate-900">
-                  ${Number(minimumBid || 0).toFixed(2)}
-                </p>
-              </div>
+              {active && (
+                <>
+                  <div>
+                    <p className="text-sm text-slate-500">Minimum Next Bid</p>
+                    <p className="text-xl font-bold text-slate-900">
+                      ${Number(minimumBid || 0).toFixed(2)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm text-slate-500">
+                      Minimum Amount to Add
+                    </p>
+                    <p className="text-xl font-bold text-slate-900">
+                      ${Number(minimumAddAmount || 1).toFixed(2)}
+                    </p>
+                  </div>
+                </>
+              )}
 
               {auction.buyoutPrice && active && !isSeller && (
                 <button
@@ -277,16 +289,49 @@ export default function AuctionDetails() {
 
               {active && !isSeller && (
                 <form onSubmit={handlePlaceBid} className="space-y-4">
-                  <input
-                    type="number"
-                    min={minimumBid}
-                    step="0.01"
-                    value={bidAmount}
-                    onChange={(e) => setBidAmount(e.target.value)}
-                    placeholder={`Minimum $${minimumBid.toFixed(2)}`}
-                    className="w-full rounded-md border border-slate-300 px-4 py-3 outline-none focus:border-sky-500"
-                    required
-                  />
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-slate-700">
+                      Amount to Add
+                    </label>
+
+                    <input
+                      type="number"
+                      min={minimumAddAmount}
+                      step={minimumAddAmount}
+                      value={bidAmount}
+                      onChange={(e) => setBidAmount(e.target.value)}
+                      placeholder={`Add at least $${minimumAddAmount.toFixed(
+                        2
+                      )}`}
+                      className="w-full rounded-md border border-slate-300 px-4 py-3 outline-none focus:border-sky-500"
+                      required
+                    />
+
+                    {bidAmount && Number(bidAmount) > 0 && (
+                      <div className="mt-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-700">
+                        <p>
+                          Current bid:{" "}
+                          <span className="font-bold">
+                            ${Number(currentBid || 0).toFixed(2)}
+                          </span>
+                        </p>
+
+                        <p>
+                          You are adding:{" "}
+                          <span className="font-bold">
+                            ${Number(bidAmount || 0).toFixed(2)}
+                          </span>
+                        </p>
+
+                        <p>
+                          Your new bid will be:{" "}
+                          <span className="font-bold">
+                            ${Number(previewNewBid || 0).toFixed(2)}
+                          </span>
+                        </p>
+                      </div>
+                    )}
+                  </div>
 
                   <label className="flex gap-2 text-sm text-slate-600">
                     <input
@@ -321,18 +366,22 @@ export default function AuctionDetails() {
                   </p>
 
                   <p className="mt-1 text-sm text-green-700">
-                    Payment due by{" "}
-                    {new Date(auction.paymentDueAt).toLocaleString()}.
+                    This auction has been added to your cart.
                   </p>
 
-                  <button
-                    type="button"
-                    disabled={actionLoading || isPaymentOverdue(auction)}
-                    onClick={handleMarkPaid}
-                    className="mt-4 w-full rounded-md bg-green-600 py-3 font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+                  {auction.paymentDueAt && (
+                    <p className="mt-1 text-sm text-green-700">
+                      Payment due by{" "}
+                      {new Date(auction.paymentDueAt).toLocaleString()}.
+                    </p>
+                  )}
+
+                  <Link
+                    to="/cart"
+                    className="mt-4 block w-full rounded-md bg-green-600 py-3 text-center font-semibold text-white hover:bg-green-700"
                   >
-                    Mark as Paid
-                  </button>
+                    Go to Cart to Pay
+                  </Link>
                 </div>
               )}
 
@@ -340,6 +389,16 @@ export default function AuctionDetails() {
                 <p className="rounded-xl bg-yellow-50 p-4 text-sm text-yellow-700">
                   This auction is awaiting payment from the current winner.
                 </p>
+              )}
+
+              {auction.status === "PAID" && (
+                <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                  <p className="font-bold text-green-700">Payment completed.</p>
+
+                  <p className="mt-1 text-sm text-green-700">
+                    This auction has been paid successfully.
+                  </p>
+                </div>
               )}
 
               <div className="border-t border-slate-200 pt-4 text-sm text-slate-500">

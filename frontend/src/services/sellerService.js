@@ -17,8 +17,8 @@ export const sellerService = {
     return api.get("/seller/shop");
   },
 
-  updateOrderStatus: async (orderId, status) => {
-    return api.patch(`/seller/orders/${orderId}/status`, {
+  updateOrderStatus: async (orderItemId, status) => {
+    return api.patch(`/seller/order-items/${orderItemId}/status`, {
       status,
     });
   },

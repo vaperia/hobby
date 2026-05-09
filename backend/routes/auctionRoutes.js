@@ -19,6 +19,20 @@ function getPaymentDueDate() {
   return dueDate;
 }
 
+function getRepostEndDate() {
+  const endDate = new Date();
+  endDate.setDate(endDate.getDate() + 7);
+  return endDate;
+}
+
+function isPaymentOverdue(auction) {
+  return (
+    auction.status === AWAITING_PAYMENT &&
+    auction.paymentDueAt &&
+    new Date(auction.paymentDueAt) < new Date()
+  );
+}
+
 async function uploadImageToFirebase(file) {
   if (!file) return null;
 
@@ -38,7 +52,58 @@ async function uploadImageToFirebase(file) {
   return getDownloadURL(firebaseFile);
 }
 
-function getUniqueHighestBids(bids) {
+function extractFirebaseFilePath(imageUrl) {
+  if (!imageUrl) return null;
+
+  try {
+    if (imageUrl.startsWith("gs://")) {
+      const withoutPrefix = imageUrl.replace("gs://", "");
+      const parts = withoutPrefix.split("/");
+      parts.shift();
+      return parts.join("/");
+    }
+
+    if (imageUrl.includes("/o/")) {
+      const encodedPath = imageUrl.split("/o/")[1].split("?")[0];
+      return decodeURIComponent(encodedPath);
+    }
+
+    if (imageUrl.startsWith("auctions/")) {
+      return imageUrl;
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Extract Firebase path error:", error);
+    return null;
+  }
+}
+
+async function deleteImageFromFirebase(imageUrl) {
+  if (!imageUrl) return;
+
+  try {
+    const filePath = extractFirebaseFilePath(imageUrl);
+
+    if (!filePath) {
+      console.warn("Could not extract Firebase file path from URL:", imageUrl);
+      return;
+    }
+
+    await bucket.file(filePath).delete();
+
+    console.log("Deleted Firebase image:", filePath);
+  } catch (error) {
+    if (error.code === 404) {
+      console.warn("Firebase image already deleted or not found.");
+      return;
+    }
+
+    console.error("Delete Firebase image error:", error);
+  }
+}
+
+function getUniqueHighestBids(bids = []) {
   const unique = [];
 
   for (const bid of bids) {
@@ -86,6 +151,56 @@ async function getAuctionWithDetails(id) {
   });
 }
 
+async function getCompletedOrderItemForAuction(auctionId) {
+  return prisma.orderItem.findFirst({
+    where: {
+      auctionId,
+      deliveryStatus: {
+        in: ["completed", "collected"],
+      },
+    },
+    select: {
+      id: true,
+      deliveryStatus: true,
+    },
+  });
+}
+
+async function forfeitAuctionIfPaymentExpired(id) {
+  const auction = await getAuctionWithDetails(id);
+
+  if (!auction) return null;
+
+  if (!isPaymentOverdue(auction)) {
+    return auction;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.cartItem.deleteMany({
+      where: {
+        auctionId: auction.id,
+      },
+    });
+
+    await tx.auction.update({
+      where: { id: auction.id },
+      data: {
+        status: EXPIRED_UNPAID,
+
+        // Keep these values so the seller can still offer
+        // the item to the next highest bidder later.
+        winnerId: auction.winnerId,
+        winnerRank: auction.winnerRank,
+        winnerSource: auction.winnerSource,
+        currentBid: auction.currentBid,
+        paymentDueAt: auction.paymentDueAt,
+      },
+    });
+  });
+
+  return getAuctionWithDetails(id);
+}
+
 async function finalizeAuctionIfEnded(id) {
   const auction = await getAuctionWithDetails(id);
 
@@ -111,16 +226,37 @@ async function finalizeAuctionIfEnded(id) {
   const uniqueHighestBids = getUniqueHighestBids(auction.bids);
   const winnerBid = uniqueHighestBids[0];
 
-  await prisma.auction.update({
-    where: { id },
-    data: {
-      status: AWAITING_PAYMENT,
-      winnerId: winnerBid.bidderId,
-      winnerRank: 1,
-      winnerSource: "BID",
-      currentBid: winnerBid.amount,
-      paymentDueAt: getPaymentDueDate(),
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.auction.update({
+      where: { id },
+      data: {
+        status: AWAITING_PAYMENT,
+        winnerId: winnerBid.bidderId,
+        winnerRank: 1,
+        winnerSource: "BID",
+        currentBid: winnerBid.amount,
+        paymentDueAt: getPaymentDueDate(),
+      },
+    });
+
+    await tx.cartItem.upsert({
+      where: {
+        userId_auctionId: {
+          userId: winnerBid.bidderId,
+          auctionId: id,
+        },
+      },
+      update: {
+        quantity: 1,
+        price: Number(winnerBid.amount),
+      },
+      create: {
+        userId: winnerBid.bidderId,
+        auctionId: id,
+        quantity: 1,
+        price: Number(winnerBid.amount),
+      },
+    });
   });
 
   return getAuctionWithDetails(id);
@@ -216,7 +352,47 @@ router.get("/seller/my-auctions", authMiddleware, async (req, res) => {
       },
     });
 
-    return res.json(auctions);
+    const checkedAuctions = await Promise.all(
+      auctions.map(async (auction) => {
+        let updatedAuction = await finalizeAuctionIfEnded(auction.id);
+
+        if (updatedAuction) {
+          updatedAuction = await forfeitAuctionIfPaymentExpired(
+            updatedAuction.id
+          );
+        }
+
+        if (!updatedAuction) return null;
+
+        const completedOrderItem = await getCompletedOrderItemForAuction(
+          updatedAuction.id
+        );
+
+        const auctionEnded =
+          updatedAuction.endsAt &&
+          new Date(updatedAuction.endsAt) <= new Date();
+
+        const endedWithoutBids =
+          auctionEnded &&
+          updatedAuction.status === ACTIVE &&
+          (!updatedAuction.bids || updatedAuction.bids.length === 0);
+
+        const canDeletePosting =
+          updatedAuction.bids.length === 0 ||
+          updatedAuction.status === EXPIRED_UNPAID ||
+          endedWithoutBids ||
+          isPaymentOverdue(updatedAuction) ||
+          Boolean(completedOrderItem);
+
+        return {
+          ...updatedAuction,
+          canDeletePosting,
+          completedOrderStatus: completedOrderItem?.deliveryStatus || null,
+        };
+      })
+    );
+
+    return res.json(checkedAuctions.filter(Boolean));
   } catch (error) {
     console.error("Get seller auctions error:", error);
     return res
@@ -227,7 +403,11 @@ router.get("/seller/my-auctions", authMiddleware, async (req, res) => {
 
 router.get("/:id", async (req, res) => {
   try {
-    const auction = await finalizeAuctionIfEnded(req.params.id);
+    let auction = await finalizeAuctionIfEnded(req.params.id);
+
+    if (auction) {
+      auction = await forfeitAuctionIfPaymentExpired(req.params.id);
+    }
 
     if (!auction) {
       return res.status(404).json({ message: "Auction not found" });
@@ -352,6 +532,7 @@ router.put("/:id", authMiddleware, upload.single("image"), async (req, res) => {
 
     const hasBids = auction.bids.length > 0;
     const updateData = {};
+    let oldImageUrlToDelete = null;
 
     if (endsAt) {
       const newEndDate = new Date(endsAt);
@@ -433,6 +614,7 @@ router.put("/:id", authMiddleware, upload.single("image"), async (req, res) => {
       }
 
       if (req.file) {
+        oldImageUrlToDelete = auction.imageUrl;
         updateData.imageUrl = await uploadImageToFirebase(req.file);
       }
     }
@@ -452,6 +634,10 @@ router.put("/:id", authMiddleware, upload.single("image"), async (req, res) => {
       },
     });
 
+    if (oldImageUrlToDelete && oldImageUrlToDelete !== updatedAuction.imageUrl) {
+      await deleteImageFromFirebase(oldImageUrlToDelete);
+    }
+
     return res.json({
       message: hasBids
         ? "Auction timing/buyout updated successfully."
@@ -468,7 +654,7 @@ router.put("/:id", authMiddleware, upload.single("image"), async (req, res) => {
 
 router.post("/:id/bids", authMiddleware, async (req, res) => {
   try {
-    const { amount } = req.body;
+    const { amountToAdd } = req.body;
     const auctionId = req.params.id;
     const bidderId = req.user.userId;
 
@@ -501,15 +687,17 @@ router.post("/:id/bids", authMiddleware, async (req, res) => {
       });
     }
 
-    const currentAmount = auction.currentBid || auction.startingBid;
-    const minimumBid = Number(currentAmount) + Number(auction.bidIncrement || 1);
-    const bidAmount = Number(amount);
+    const currentAmount = Number(auction.currentBid || auction.startingBid);
+    const minimumAddAmount = Number(auction.bidIncrement || 1);
+    const addAmount = Number(amountToAdd);
 
-    if (!bidAmount || bidAmount < minimumBid) {
+    if (!addAmount || addAmount < minimumAddAmount) {
       return res.status(400).json({
-        message: `Minimum bid is $${minimumBid.toFixed(2)}`,
+        message: `Minimum amount to add is $${minimumAddAmount.toFixed(2)}`,
       });
     }
+
+    const bidAmount = currentAmount + addAmount;
 
     const bid = await prisma.$transaction(async (tx) => {
       const createdBid = await tx.bid.create({
@@ -533,6 +721,9 @@ router.post("/:id/bids", authMiddleware, async (req, res) => {
     return res.status(201).json({
       message: "Bid placed successfully",
       bid,
+      currentAmount,
+      amountAdded: addAmount,
+      newBidAmount: bidAmount,
     });
   } catch (error) {
     console.error("Place bid error:", error);
@@ -574,20 +765,43 @@ router.post("/:id/buyout", authMiddleware, async (req, res) => {
       });
     }
 
-    const updatedAuction = await prisma.auction.update({
-      where: { id: auctionId },
-      data: {
-        status: AWAITING_PAYMENT,
-        winnerId: buyerId,
-        winnerRank: 0,
-        winnerSource: "BUYOUT",
-        currentBid: auction.buyoutPrice,
-        paymentDueAt: getPaymentDueDate(),
-      },
+    const updatedAuction = await prisma.$transaction(async (tx) => {
+      const auctionAfterBuyout = await tx.auction.update({
+        where: { id: auctionId },
+        data: {
+          status: AWAITING_PAYMENT,
+          winnerId: buyerId,
+          winnerRank: 0,
+          winnerSource: "BUYOUT",
+          currentBid: auction.buyoutPrice,
+          paymentDueAt: getPaymentDueDate(),
+        },
+      });
+
+      await tx.cartItem.upsert({
+        where: {
+          userId_auctionId: {
+            userId: buyerId,
+            auctionId,
+          },
+        },
+        update: {
+          quantity: 1,
+          price: Number(auction.buyoutPrice),
+        },
+        create: {
+          userId: buyerId,
+          auctionId,
+          quantity: 1,
+          price: Number(auction.buyoutPrice),
+        },
+      });
+
+      return auctionAfterBuyout;
     });
 
     return res.json({
-      message: "Buyout successful. Please complete payment within 3 days.",
+      message: "Buyout successful. The auction item has been added to your cart.",
       auction: updatedAuction,
     });
   } catch (error) {
@@ -620,7 +834,11 @@ router.post("/:id/end", authMiddleware, async (req, res) => {
       });
     }
 
-    const updatedAuction = await finalizeAuctionIfEnded(req.params.id);
+    let updatedAuction = await finalizeAuctionIfEnded(req.params.id);
+
+    if (updatedAuction) {
+      updatedAuction = await forfeitAuctionIfPaymentExpired(req.params.id);
+    }
 
     return res.json({
       message: "Auction ended",
@@ -634,7 +852,7 @@ router.post("/:id/end", authMiddleware, async (req, res) => {
 
 router.post("/:id/reallocate", authMiddleware, async (req, res) => {
   try {
-    const auction = await getAuctionWithDetails(req.params.id);
+    let auction = await getAuctionWithDetails(req.params.id);
 
     if (!auction) {
       return res.status(404).json({ message: "Auction not found" });
@@ -644,15 +862,14 @@ router.post("/:id/reallocate", authMiddleware, async (req, res) => {
       return res.status(403).json({ message: "Not authorized" });
     }
 
-    if (auction.status !== AWAITING_PAYMENT) {
-      return res.status(400).json({
-        message: "Auction is not awaiting payment",
-      });
-    }
+    auction = await forfeitAuctionIfPaymentExpired(auction.id);
 
-    if (!auction.paymentDueAt || new Date(auction.paymentDueAt) > new Date()) {
+    const canReallocate =
+      auction.status === EXPIRED_UNPAID || isPaymentOverdue(auction);
+
+    if (!canReallocate) {
       return res.status(400).json({
-        message: "Payment deadline has not passed yet",
+        message: "Auction payment has not expired yet.",
       });
     }
 
@@ -664,38 +881,58 @@ router.post("/:id/reallocate", authMiddleware, async (req, res) => {
     const nextWinnerBid = uniqueHighestBids[nextIndex];
 
     if (!nextWinnerBid) {
-      const expiredAuction = await prisma.auction.update({
-        where: { id: auction.id },
-        data: {
-          status: EXPIRED_UNPAID,
-          winnerId: null,
-          paymentDueAt: null,
-        },
-      });
-
-      return res.json({
-        message: "No more bidders available. Auction expired unpaid.",
-        auction: expiredAuction,
+      return res.status(400).json({
+        message:
+          "No next bidder available. You can repost, move to marketplace, or delete this auction.",
       });
     }
 
-    const updatedAuction = await prisma.auction.update({
-      where: { id: auction.id },
-      data: {
-        status: AWAITING_PAYMENT,
-        winnerId: nextWinnerBid.bidderId,
-        winnerRank:
-          auction.winnerSource === "BUYOUT"
-            ? 1
-            : Number(auction.winnerRank || 0) + 1,
-        winnerSource: "REALLOCATED",
-        currentBid: nextWinnerBid.amount,
-        paymentDueAt: getPaymentDueDate(),
-      },
+    const updatedAuction = await prisma.$transaction(async (tx) => {
+      await tx.cartItem.deleteMany({
+        where: {
+          auctionId: auction.id,
+        },
+      });
+
+      const auctionAfterReallocate = await tx.auction.update({
+        where: { id: auction.id },
+        data: {
+          status: AWAITING_PAYMENT,
+          winnerId: nextWinnerBid.bidderId,
+          winnerRank:
+            auction.winnerSource === "BUYOUT"
+              ? 1
+              : Number(auction.winnerRank || 0) + 1,
+          winnerSource: "REALLOCATED",
+          currentBid: nextWinnerBid.amount,
+          paymentDueAt: getPaymentDueDate(),
+        },
+      });
+
+      await tx.cartItem.upsert({
+        where: {
+          userId_auctionId: {
+            userId: nextWinnerBid.bidderId,
+            auctionId: auction.id,
+          },
+        },
+        update: {
+          quantity: 1,
+          price: Number(nextWinnerBid.amount),
+        },
+        create: {
+          userId: nextWinnerBid.bidderId,
+          auctionId: auction.id,
+          quantity: 1,
+          price: Number(nextWinnerBid.amount),
+        },
+      });
+
+      return auctionAfterReallocate;
     });
 
     return res.json({
-      message: "Auction offered to next highest bidder",
+      message: "Auction offered to next highest bidder and added to their cart.",
       auction: updatedAuction,
     });
   } catch (error) {
@@ -703,6 +940,272 @@ router.post("/:id/reallocate", authMiddleware, async (req, res) => {
     return res
       .status(500)
       .json({ message: "Server error reallocating auction" });
+  }
+});
+
+router.post("/:id/repost", authMiddleware, async (req, res) => {
+  try {
+    let auction = await getAuctionWithDetails(req.params.id);
+
+    if (!auction) {
+      return res.status(404).json({ message: "Auction not found" });
+    }
+
+    if (auction.sellerId !== req.user.userId) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    auction = await forfeitAuctionIfPaymentExpired(auction.id);
+
+    const auctionEnded =
+      auction.endsAt && new Date(auction.endsAt) <= new Date();
+
+    const canRepost =
+      auction.status === EXPIRED_UNPAID ||
+      isPaymentOverdue(auction) ||
+      (auction.status === ACTIVE && auctionEnded);
+
+    if (!canRepost) {
+      return res.status(400).json({
+        message: "Only ended or expired unpaid auctions can be reposted.",
+      });
+    }
+
+    const {
+      title,
+      description,
+      category,
+      condition,
+      startingBid,
+      bidIncrement,
+      buyoutPrice,
+      endsAt,
+    } = req.body;
+
+    const repostTitle = title || auction.title;
+    const repostDescription =
+      description === undefined ? auction.description : description;
+    const repostCategory = category || auction.category;
+    const repostCondition = condition || auction.condition;
+
+    const startingBidNumber =
+      startingBid === undefined || startingBid === ""
+        ? Number(auction.startingBid)
+        : Number(startingBid);
+
+    const bidIncrementNumber =
+      bidIncrement === undefined || bidIncrement === ""
+        ? Number(auction.bidIncrement || 1)
+        : Number(bidIncrement);
+
+    const buyoutPriceNumber =
+      buyoutPrice === undefined || buyoutPrice === "" || buyoutPrice === null
+        ? null
+        : Number(buyoutPrice);
+
+    const repostEndDate = endsAt ? new Date(endsAt) : getRepostEndDate();
+
+    if (!repostTitle) {
+      return res.status(400).json({ message: "Auction title is required." });
+    }
+
+    if (!startingBidNumber || startingBidNumber <= 0) {
+      return res.status(400).json({
+        message: "Starting bid must be above 0.",
+      });
+    }
+
+    if (!bidIncrementNumber || bidIncrementNumber <= 0) {
+      return res.status(400).json({
+        message: "Bid increment must be above 0.",
+      });
+    }
+
+    if (buyoutPriceNumber !== null && buyoutPriceNumber <= startingBidNumber) {
+      return res.status(400).json({
+        message: "Buyout price must be higher than starting bid.",
+      });
+    }
+
+    if (
+      !repostEndDate ||
+      Number.isNaN(repostEndDate.getTime()) ||
+      repostEndDate <= new Date()
+    ) {
+      return res.status(400).json({
+        message: "Auction end date must be in the future.",
+      });
+    }
+
+    const updatedAuction = await prisma.$transaction(async (tx) => {
+      await tx.cartItem.deleteMany({
+        where: {
+          auctionId: auction.id,
+        },
+      });
+
+      await tx.bid.deleteMany({
+        where: {
+          auctionId: auction.id,
+        },
+      });
+
+      return tx.auction.update({
+        where: { id: auction.id },
+        data: {
+          title: repostTitle,
+          description: repostDescription,
+          category: repostCategory,
+          condition: repostCondition,
+          startingBid: startingBidNumber,
+          currentBid: null,
+          bidIncrement: bidIncrementNumber,
+          buyoutPrice: buyoutPriceNumber,
+          endsAt: repostEndDate,
+          status: ACTIVE,
+          winnerId: null,
+          winnerRank: 0,
+          winnerSource: null,
+          paymentDueAt: null,
+          paidAt: null,
+        },
+      });
+    });
+
+    return res.json({
+      message: "Auction reposted successfully.",
+      auction: updatedAuction,
+    });
+  } catch (error) {
+    console.error("Repost auction error:", error);
+    return res.status(500).json({
+      message: "Server error reposting auction",
+      error: error.message,
+    });
+  }
+});
+
+router.post("/:id/convert-to-product", authMiddleware, async (req, res) => {
+  try {
+    let auction = await getAuctionWithDetails(req.params.id);
+
+    if (!auction) {
+      return res.status(404).json({ message: "Auction not found" });
+    }
+
+    if (auction.sellerId !== req.user.userId) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    auction = await forfeitAuctionIfPaymentExpired(auction.id);
+
+    const canConvert =
+      auction.status === EXPIRED_UNPAID || isPaymentOverdue(auction);
+
+    if (!canConvert) {
+      return res.status(400).json({
+        message: "Only expired unpaid auctions can be moved to marketplace.",
+      });
+    }
+
+    const {
+      title,
+      description,
+      price,
+      stock,
+      category,
+      condition,
+      deliveryMethods,
+    } = req.body;
+
+    const listingTitle = title || auction.title;
+    const listingDescription = description ?? auction.description;
+    const listingPrice = Number(price);
+    const listingStock = Number(stock || 1);
+    const listingCategory = category || auction.category;
+    const listingCondition = condition || auction.condition;
+
+    let parsedDeliveryMethods = ["SELF_COLLECTION", "STANDARD_DELIVERY"];
+
+    if (deliveryMethods) {
+      try {
+        parsedDeliveryMethods =
+          typeof deliveryMethods === "string"
+            ? JSON.parse(deliveryMethods)
+            : deliveryMethods;
+      } catch {
+        parsedDeliveryMethods = ["SELF_COLLECTION", "STANDARD_DELIVERY"];
+      }
+    }
+
+    if (!listingTitle) {
+      return res.status(400).json({ message: "Listing title is required." });
+    }
+
+    if (!listingPrice || listingPrice <= 0) {
+      return res.status(400).json({
+        message: "Marketplace price must be above 0.",
+      });
+    }
+
+    if (listingStock <= 0) {
+      return res.status(400).json({
+        message: "Stock must be at least 1.",
+      });
+    }
+
+    if (!Array.isArray(parsedDeliveryMethods) || !parsedDeliveryMethods.length) {
+      return res.status(400).json({
+        message: "Please select at least one delivery method.",
+      });
+    }
+
+    const listing = await prisma.$transaction(async (tx) => {
+      await tx.cartItem.deleteMany({
+        where: {
+          auctionId: auction.id,
+        },
+      });
+
+      await tx.bid.deleteMany({
+        where: {
+          auctionId: auction.id,
+        },
+      });
+
+      const createdListing = await tx.listing.create({
+        data: {
+          title: listingTitle,
+          description: listingDescription,
+          imageUrl: auction.imageUrl,
+          category: listingCategory,
+          condition: listingCondition,
+          price: listingPrice,
+          stock: listingStock,
+          deliveryMethods: parsedDeliveryMethods,
+          sellerId: auction.sellerId,
+        },
+      });
+
+      await tx.auction.delete({
+        where: {
+          id: auction.id,
+        },
+      });
+
+      return createdListing;
+    });
+
+    return res.json({
+      message: "Auction moved to marketplace successfully.",
+      listing,
+    });
+  } catch (error) {
+    console.error("Convert auction to marketplace error:", error);
+    return res.status(500).json({
+      message: "Server error moving auction to marketplace",
+      error: error.message,
+    });
   }
 });
 
@@ -751,14 +1254,72 @@ router.post("/:id/mark-paid", authMiddleware, async (req, res) => {
   }
 });
 
-router.delete("/:id", authMiddleware, async (req, res) => {
+router.post("/:id/complete-order", authMiddleware, async (req, res) => {
   try {
+    const auctionId = req.params.id;
+    const sellerId = req.user.userId;
+
     const auction = await prisma.auction.findUnique({
-      where: { id: req.params.id },
-      include: {
-        bids: true,
+      where: { id: auctionId },
+    });
+
+    if (!auction) {
+      return res.status(404).json({ message: "Auction not found" });
+    }
+
+    if (auction.sellerId !== sellerId) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    if (auction.status !== PAID) {
+      return res.status(400).json({
+        message: "Only paid auction orders can be marked as completed.",
+      });
+    }
+
+    const orderItem = await prisma.orderItem.findFirst({
+      where: {
+        auctionId,
       },
     });
+
+    if (!orderItem) {
+      return res.status(404).json({
+        message: "Auction order item not found.",
+      });
+    }
+
+    if (["completed", "collected"].includes(orderItem.deliveryStatus)) {
+      return res.json({
+        message: "Auction order is already completed.",
+        orderItem,
+      });
+    }
+
+    const updatedOrderItem = await prisma.orderItem.update({
+      where: {
+        id: orderItem.id,
+      },
+      data: {
+        deliveryStatus: "completed",
+      },
+    });
+
+    return res.json({
+      message: "Auction order marked as completed.",
+      orderItem: updatedOrderItem,
+    });
+  } catch (error) {
+    console.error("Complete auction order error:", error);
+    return res.status(500).json({
+      message: "Server error marking auction order as completed",
+    });
+  }
+});
+
+router.delete("/:id", authMiddleware, async (req, res) => {
+  try {
+    let auction = await getAuctionWithDetails(req.params.id);
 
     if (!auction) {
       return res.status(404).json({ message: "Auction not found" });
@@ -768,17 +1329,59 @@ router.delete("/:id", authMiddleware, async (req, res) => {
       return res.status(403).json({ message: "Not authorized" });
     }
 
-    if (auction.bids.length > 0) {
+    auction = await forfeitAuctionIfPaymentExpired(auction.id);
+
+    const completedOrderItem = await getCompletedOrderItemForAuction(
+      auction.id
+    );
+
+    const canDelete =
+      auction.bids.length === 0 ||
+      auction.status === EXPIRED_UNPAID ||
+      isPaymentOverdue(auction) ||
+      Boolean(completedOrderItem);
+
+    if (!canDelete) {
       return res.status(400).json({
-        message: "Cannot delete auction after bids have been placed",
+        message:
+          "Cannot delete this auction unless it has no bids, is completed, or payment has expired.",
       });
     }
 
-    await prisma.auction.delete({
-      where: { id: auction.id },
+    const imageUrlToDelete = auction.imageUrl;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.cartItem.deleteMany({
+        where: {
+          auctionId: auction.id,
+        },
+      });
+
+      await tx.bid.deleteMany({
+        where: {
+          auctionId: auction.id,
+        },
+      });
+
+      await tx.orderItem.updateMany({
+        where: {
+          auctionId: auction.id,
+        },
+        data: {
+          auctionId: null,
+        },
+      });
+
+      await tx.auction.delete({
+        where: {
+          id: auction.id,
+        },
+      });
     });
 
-    return res.json({ message: "Auction deleted" });
+    await deleteImageFromFirebase(imageUrlToDelete);
+
+    return res.json({ message: "Auction posting deleted" });
   } catch (error) {
     console.error("Delete auction error:", error);
     return res.status(500).json({ message: "Server error deleting auction" });

@@ -14,6 +14,7 @@ import Auctions from "./pages/Auctions";
 import AuctionDetails from "./pages/AuctionDetails";
 import CreateAuction from "./pages/CreateAuction";
 import EditAuction from "./pages/EditAuction";
+import RepostAuction from "./pages/RepostAuction";
 import SellerAuctions from "./pages/SellerAuctions";
 import SellerDashboard from "./pages/SellerDashboard";
 import SellerOrders from "./pages/SellerOrders";
@@ -21,6 +22,8 @@ import SellerReports from "./pages/SellerReports";
 import SellerShop from "./pages/SellerShop";
 import CreateListing from "./pages/CreateListing";
 import EditListing from "./pages/EditListing";
+import ConvertAuctionToListing from "./pages/ConvertAuctionToListing";
+import ConvertListingToAuction from "./pages/ConvertListingToAuction";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
@@ -127,6 +130,24 @@ export default function App() {
       />
 
       <Route
+        path="/seller/auctions/:id/repost"
+        element={
+          <ProtectedRoute allowedRoles={["seller", "admin"]}>
+            <RepostAuction />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/seller/auctions/:id/convert-to-listing"
+        element={
+          <ProtectedRoute allowedRoles={["seller", "admin"]}>
+            <ConvertAuctionToListing />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
         path="/seller/products/new"
         element={
           <ProtectedRoute allowedRoles={["seller", "admin"]}>
@@ -140,6 +161,15 @@ export default function App() {
         element={
           <ProtectedRoute allowedRoles={["seller", "admin"]}>
             <EditListing />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/seller/products/:id/convert-to-auction"
+        element={
+          <ProtectedRoute allowedRoles={["seller", "admin"]}>
+            <ConvertListingToAuction />
           </ProtectedRoute>
         }
       />

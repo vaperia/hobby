@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import PageLayout from "../components/PageLayout";
 import { sellerService } from "../services/sellerService";
 
+const API_BASE = "http://localhost:5000/api";
+
 const STATUS_FILTERS = [
   { value: "all", label: "All" },
   { value: "pending", label: "Pending" },
@@ -44,7 +46,11 @@ function getNextOrderStatus(order) {
   const status = order.status || "pending";
   const shippingMethod = order.shippingMethod;
 
-  if (status === "cancelled" || status === "completed" || status === "collected") {
+  if (
+    status === "cancelled" ||
+    status === "completed" ||
+    status === "collected"
+  ) {
     return null;
   }
 
@@ -87,10 +93,22 @@ function canCancelOrder(order) {
   return !["completed", "collected", "cancelled"].includes(order.status);
 }
 
+function isCompletedAuctionOrder(order) {
+  return (
+    order.itemType === "auction" &&
+    ["completed", "collected"].includes(order.status)
+  );
+}
+
+function getAuctionIdFromOrder(order) {
+  return order.auctionId || order.itemId || order.productId;
+}
+
 export default function SellerOrders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [updatingOrderId, setUpdatingOrderId] = useState("");
+  const [updatingOrderItemId, setUpdatingOrderItemId] = useState("");
+  const [deletingAuctionId, setDeletingAuctionId] = useState("");
   const [filter, setFilter] = useState("all");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -114,28 +132,72 @@ export default function SellerOrders() {
     loadOrders();
   }, []);
 
-  async function handleUpdateOrderStatus(orderId, status) {
-    if (!orderId || !status) return;
+  async function handleUpdateOrderStatus(orderItemId, status) {
+    if (!orderItemId || !status) return;
 
     try {
-      setUpdatingOrderId(orderId);
+      setUpdatingOrderItemId(orderItemId);
       setError("");
       setMessage("");
 
-      await sellerService.updateOrderStatus(orderId, status);
+      await sellerService.updateOrderStatus(orderItemId, status);
 
       setOrders((prev) =>
         prev.map((order) =>
-          order.id === orderId ? { ...order, status } : order
+          order.orderItemId === orderItemId ? { ...order, status } : order
         )
       );
 
-      setMessage(`Order updated to ${formatStatus(status)}.`);
+      setMessage(`Delivery status updated to ${formatStatus(status)}.`);
     } catch (err) {
-      console.error("Update order status error:", err);
-      setError(err.message || "Failed to update order status.");
+      console.error("Update delivery status error:", err);
+      setError(err.message || "Failed to update delivery status.");
     } finally {
-      setUpdatingOrderId("");
+      setUpdatingOrderItemId("");
+    }
+  }
+
+  async function handleDeleteAuctionPosting(order) {
+    const auctionId = getAuctionIdFromOrder(order);
+
+    if (!auctionId) {
+      setError("Auction ID not found for this order.");
+      return;
+    }
+
+    const confirmDelete = window.confirm(
+      "Delete this completed auction posting? This will remove the auction listing from your seller auction page."
+    );
+
+    if (!confirmDelete) return;
+
+    try {
+      setDeletingAuctionId(auctionId);
+      setError("");
+      setMessage("");
+
+      const token = localStorage.getItem("token");
+
+      const res = await fetch(`${API_BASE}/auctions/${auctionId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to delete auction posting.");
+      }
+
+      setMessage("Auction posting deleted successfully.");
+      await loadOrders();
+    } catch (err) {
+      console.error("Delete auction posting error:", err);
+      setError(err.message || "Failed to delete auction posting.");
+    } finally {
+      setDeletingAuctionId("");
     }
   }
 
@@ -154,7 +216,8 @@ export default function SellerOrders() {
             </h1>
 
             <p className="mt-2 text-slate-500">
-              Manage customer orders and update each order step by step.
+              Manage customer orders and update delivery status for normal
+              products and auction products.
             </p>
           </div>
 
@@ -202,12 +265,12 @@ export default function SellerOrders() {
             <p className="text-slate-600">No orders found.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1050px] border-collapse">
+              <table className="w-full min-w-[1100px] border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-sm text-slate-500">
                     <th className="pb-3 font-semibold">Order</th>
                     <th className="pb-3 font-semibold">Buyer</th>
-                    <th className="pb-3 font-semibold">Product</th>
+                    <th className="pb-3 font-semibold">Item</th>
                     <th className="pb-3 font-semibold">Delivery</th>
                     <th className="pb-3 font-semibold">Date</th>
                     <th className="pb-3 font-semibold">Total</th>
@@ -219,6 +282,9 @@ export default function SellerOrders() {
                 <tbody>
                   {filteredOrders.map((order) => {
                     const nextStatus = getNextOrderStatus(order);
+                    const auctionId = getAuctionIdFromOrder(order);
+                    const showDeleteAuctionPosting =
+                      isCompletedAuctionOrder(order) && auctionId;
 
                     return (
                       <tr
@@ -230,10 +296,15 @@ export default function SellerOrders() {
                         </td>
 
                         <td className="py-4 text-slate-700">
-                          <p className="font-semibold">{order.buyer}</p>
-                          <p className="text-xs text-slate-400">
-                            {order.buyerEmail}
+                          <p className="font-semibold">
+                            {order.buyer || "Unknown"}
                           </p>
+
+                          {order.buyerEmail && (
+                            <p className="text-xs text-slate-400">
+                              {order.buyerEmail}
+                            </p>
+                          )}
                         </td>
 
                         <td className="py-4 text-slate-700">
@@ -241,7 +312,7 @@ export default function SellerOrders() {
                             {order.productImage ? (
                               <img
                                 src={order.productImage}
-                                alt={order.item}
+                                alt={order.item || "Item"}
                                 className="h-12 w-12 rounded-lg object-cover"
                               />
                             ) : (
@@ -251,9 +322,20 @@ export default function SellerOrders() {
                             )}
 
                             <div>
-                              <p className="font-semibold">{order.item}</p>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-semibold">
+                                  {order.item || "Item"}
+                                </p>
+
+                                {order.itemType === "auction" && (
+                                  <span className="rounded-full bg-purple-100 px-2 py-1 text-xs font-bold text-purple-700">
+                                    Auction
+                                  </span>
+                                )}
+                              </div>
+
                               <p className="text-xs text-slate-400">
-                                Qty: {order.quantity}
+                                Qty: {order.quantity || 1}
                               </p>
                             </div>
                           </div>
@@ -291,13 +373,18 @@ export default function SellerOrders() {
                             {nextStatus ? (
                               <button
                                 type="button"
-                                disabled={updatingOrderId === order.id}
+                                disabled={
+                                  updatingOrderItemId === order.orderItemId
+                                }
                                 onClick={() =>
-                                  handleUpdateOrderStatus(order.id, nextStatus)
+                                  handleUpdateOrderStatus(
+                                    order.orderItemId,
+                                    nextStatus
+                                  )
                                 }
                                 className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                               >
-                                {updatingOrderId === order.id
+                                {updatingOrderItemId === order.orderItemId
                                   ? "Updating..."
                                   : getNextStatusButtonLabel(order)}
                               </button>
@@ -310,13 +397,33 @@ export default function SellerOrders() {
                             {canCancelOrder(order) && (
                               <button
                                 type="button"
-                                disabled={updatingOrderId === order.id}
+                                disabled={
+                                  updatingOrderItemId === order.orderItemId
+                                }
                                 onClick={() =>
-                                  handleUpdateOrderStatus(order.id, "cancelled")
+                                  handleUpdateOrderStatus(
+                                    order.orderItemId,
+                                    "cancelled"
+                                  )
                                 }
                                 className="rounded-md bg-red-500 px-3 py-2 text-sm font-semibold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 Cancel
+                              </button>
+                            )}
+
+                            {showDeleteAuctionPosting && (
+                              <button
+                                type="button"
+                                disabled={deletingAuctionId === auctionId}
+                                onClick={() =>
+                                  handleDeleteAuctionPosting(order)
+                                }
+                                className="rounded-md bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {deletingAuctionId === auctionId
+                                  ? "Deleting..."
+                                  : "Delete Auction Posting"}
                               </button>
                             )}
                           </div>

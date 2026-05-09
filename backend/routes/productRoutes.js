@@ -2,7 +2,7 @@ const express = require("express");
 const prisma = require("../prismaClient");
 const authMiddleware = require("../middleware/authMiddleware");
 const upload = require("../middleware/uploadMiddleware");
-const { bucket } = require("../lib/firebaseAdmin");
+const { bucket, deleteImageFromFirebase } = require("../lib/firebaseAdmin");
 const { getDownloadURL } = require("firebase-admin/storage");
 
 const router = express.Router();
@@ -10,7 +10,10 @@ const router = express.Router();
 const DEFAULT_DELIVERY_METHODS = ["SELF_COLLECTION", "STANDARD_DELIVERY"];
 const VALID_DELIVERY_METHODS = ["SELF_COLLECTION", "STANDARD_DELIVERY"];
 
-function parseDeliveryMethods(deliveryMethods, fallback = DEFAULT_DELIVERY_METHODS) {
+function parseDeliveryMethods(
+  deliveryMethods,
+  fallback = DEFAULT_DELIVERY_METHODS
+) {
   if (!deliveryMethods) return fallback;
 
   let parsedMethods = fallback;
@@ -248,8 +251,10 @@ router.put("/:id", authMiddleware, upload.single("image"), async (req, res) => {
     );
 
     let imageUrl = existingProduct.imageUrl || null;
+    let oldImageUrlToDelete = null;
 
     if (req.file) {
+      oldImageUrlToDelete = existingProduct.imageUrl;
       imageUrl = await uploadImageToFirebase(req.file);
     }
 
@@ -267,10 +272,126 @@ router.put("/:id", authMiddleware, upload.single("image"), async (req, res) => {
       },
     });
 
+    if (oldImageUrlToDelete && oldImageUrlToDelete !== updatedProduct.imageUrl) {
+      await deleteImageFromFirebase(oldImageUrlToDelete);
+    }
+
     return res.json(updatedProduct);
   } catch (error) {
     console.error("Update product error:", error);
     return res.status(500).json({ message: "Server error updating product" });
+  }
+});
+
+router.post("/:id/convert-to-auction", authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const listing = await prisma.listing.findUnique({
+      where: { id },
+    });
+
+    if (!listing) {
+      return res.status(404).json({ message: "Listing not found" });
+    }
+
+    if (listing.sellerId !== req.user.userId) {
+      return res.status(403).json({
+        message: "Not authorized to convert this listing",
+      });
+    }
+
+    const {
+      title,
+      description,
+      category,
+      condition,
+      startingBid,
+      bidIncrement,
+      buyoutPrice,
+      endsAt,
+    } = req.body;
+
+    const auctionTitle = title || listing.title;
+    const auctionDescription = description ?? listing.description;
+    const auctionCategory = category || listing.category;
+    const auctionCondition = condition || listing.condition;
+
+    const startingBidNumber = Number(startingBid);
+    const bidIncrementNumber = Number(bidIncrement || 1);
+
+    const buyoutPriceNumber =
+      buyoutPrice === undefined || buyoutPrice === "" || buyoutPrice === null
+        ? null
+        : Number(buyoutPrice);
+
+    const endDate = new Date(endsAt);
+
+    if (!auctionTitle) {
+      return res.status(400).json({ message: "Auction title is required." });
+    }
+
+    if (!startingBidNumber || startingBidNumber <= 0) {
+      return res.status(400).json({
+        message: "Starting bid must be above 0.",
+      });
+    }
+
+    if (!bidIncrementNumber || bidIncrementNumber <= 0) {
+      return res.status(400).json({
+        message: "Bid increment must be above 0.",
+      });
+    }
+
+    if (buyoutPriceNumber !== null && buyoutPriceNumber <= startingBidNumber) {
+      return res.status(400).json({
+        message: "Buyout price must be higher than starting bid.",
+      });
+    }
+
+    if (!endsAt || Number.isNaN(endDate.getTime()) || endDate <= new Date()) {
+      return res.status(400).json({
+        message: "Auction end date must be in the future.",
+      });
+    }
+
+    const auction = await prisma.$transaction(async (tx) => {
+      const createdAuction = await tx.auction.create({
+        data: {
+          title: auctionTitle,
+          description: auctionDescription,
+          imageUrl: listing.imageUrl,
+          category: auctionCategory,
+          condition: auctionCondition,
+          startingBid: startingBidNumber,
+          currentBid: null,
+          bidIncrement: bidIncrementNumber,
+          buyoutPrice: buyoutPriceNumber,
+          endsAt: endDate,
+          status: "ACTIVE",
+          sellerId: listing.sellerId,
+        },
+      });
+
+      await tx.listing.delete({
+        where: {
+          id: listing.id,
+        },
+      });
+
+      return createdAuction;
+    });
+
+    return res.json({
+      message: "Marketplace listing moved to auction successfully.",
+      auction,
+    });
+  } catch (error) {
+    console.error("Convert listing to auction error:", error);
+    return res.status(500).json({
+      message: "Server error moving listing to auction",
+      error: error.message,
+    });
   }
 });
 
@@ -292,11 +413,17 @@ router.delete("/:id", authMiddleware, async (req, res) => {
       });
     }
 
+    const imageUrlToDelete = existingProduct.imageUrl;
+
     await prisma.listing.delete({
       where: { id },
     });
 
-    return res.json({ message: "Product deleted successfully" });
+    await deleteImageFromFirebase(imageUrlToDelete);
+
+    return res.json({
+      message: "Product and Firebase image deleted successfully",
+    });
   } catch (error) {
     console.error("Delete product error:", error);
     return res.status(500).json({ message: "Server error deleting product" });

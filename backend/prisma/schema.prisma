@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -12,40 +7,37 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  username  String?  @unique
-  password  String
-  role      String   @default("buyer")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  listings  Listing[]
-  cartItems CartItem[]
-  orders    Order[]
-
-  auctionsSelling Auction[] @relation("AuctionSeller")
-  auctionsWon     Auction[] @relation("AuctionWinner")
-  auctionBids     Bid[]     @relation("AuctionBidder")
+  id              String     @id @default(cuid())
+  email           String     @unique
+  username        String?    @unique
+  password        String
+  role            String     @default("buyer")
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  auctionsSelling Auction[]  @relation("AuctionSeller")
+  auctionsWon     Auction[]  @relation("AuctionWinner")
+  auctionBids     Bid[]      @relation("AuctionBidder")
+  cartItems       CartItem[]
+  listings        Listing[]
+  orders          Order[]
 }
 
 model Listing {
-  id              String   @id @default(cuid())
+  id              String      @id @default(cuid())
   title           String
   description     String?
   price           Float
-  stock           Int      @default(0)
   imageUrl        String?
   category        String?
   condition       String?
-  deliveryMethods String[] @default(["SELF_COLLECTION", "STANDARD_DELIVERY"])
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  sellerId   String
-  seller     User        @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  cartItems  CartItem[]
-  orderItems OrderItem[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  sellerId        String
+  stock           Int         @default(0)
+  deliveryMethods String[]    @default(["SELF_COLLECTION", "STANDARD_DELIVERY"])
+  cartItems       CartItem[]
+  seller          User        @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  orderItems      OrderItem[]
 }
 
 model CartItem {
@@ -53,84 +45,83 @@ model CartItem {
   quantity  Int      @default(1)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
   userId    String
-  productId String
-
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  product Listing @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String?
+  auctionId String?
+  price     Float?
+  auction   Auction? @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  product   Listing? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, productId])
+  @@unique([userId, auctionId])
 }
 
 model Order {
-  id             String   @id @default(cuid())
+  id             String      @id @default(cuid())
   totalAmount    Float
+  status         String      @default("pending")
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  userId         String
+  shippingFee    Float       @default(0)
   shippingMethod String?
-  shippingFee    Float    @default(0)
-  status         String   @default("pending")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  userId String
-  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items  OrderItem[]
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items          OrderItem[]
 }
 
 model OrderItem {
-  id        String   @id @default(cuid())
-  quantity  Int
-  price     Float
-  createdAt DateTime @default(now())
+  id             String   @id @default(cuid())
+  quantity       Int
+  price          Float
+  deliveryStatus String   @default("pending")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   orderId   String
-  productId String
+  productId String?
+  auctionId String?
 
-  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product Listing @relation(fields: [productId], references: [id], onDelete: Cascade)
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Listing? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  auction Auction? @relation(fields: [auctionId], references: [id], onDelete: Cascade)
 }
 
 model Auction {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   title        String
   description  String?
   imageUrl     String?
   category     String?
   condition    String?
-
   startingBid  Float
   currentBid   Float?
-  bidIncrement Float    @default(1)
+  bidIncrement Float      @default(1)
   buyoutPrice  Float?
-
-  startsAt DateTime @default(now())
-  endsAt   DateTime
-  status   String   @default("ACTIVE")
-
+  startsAt     DateTime   @default(now())
+  endsAt       DateTime
+  status       String     @default("ACTIVE")
   winnerId     String?
-  winnerRank   Int       @default(0)
+  winnerRank   Int        @default(0)
   winnerSource String?
   paymentDueAt DateTime?
   paidAt       DateTime?
-
-  sellerId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  seller User  @relation("AuctionSeller", fields: [sellerId], references: [id], onDelete: Cascade)
-  winner User? @relation("AuctionWinner", fields: [winnerId], references: [id], onDelete: SetNull)
-  bids   Bid[]
+  sellerId     String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  seller       User       @relation("AuctionSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  winner       User?      @relation("AuctionWinner", fields: [winnerId], references: [id])
+  bids         Bid[]
+  cartItems    CartItem[]
+  orderItems OrderItem[]
 }
 
 model Bid {
   id        String   @id @default(cuid())
   amount    Float
   createdAt DateTime @default(now())
-
   auctionId String
   bidderId  String
-
-  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
-  bidder  User    @relation("AuctionBidder", fields: [bidderId], references: [id], onDelete: Cascade)
+  auction   Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidder    User     @relation("AuctionBidder", fields: [bidderId], references: [id], onDelete: Cascade)
 }

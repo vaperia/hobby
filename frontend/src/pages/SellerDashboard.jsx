@@ -67,7 +67,9 @@ function getNextStatusButtonLabel(order) {
 }
 
 function canCancelOrder(order) {
-  return !["completed", "collected", "cancelled"].includes(order.status);
+  return !["completed", "collected", "cancelled"].includes(
+    order.status || "pending"
+  );
 }
 
 export default function SellerDashboard() {
@@ -81,12 +83,13 @@ export default function SellerDashboard() {
       completedOrders: 0,
     },
     listings: [],
+    auctions: [],
     recentOrders: [],
   });
 
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState("");
-  const [updatingOrderId, setUpdatingOrderId] = useState("");
+  const [updatingOrderItemId, setUpdatingOrderItemId] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -107,6 +110,7 @@ export default function SellerDashboard() {
           completedOrders: 0,
         },
         listings: data.listings || [],
+        auctions: data.auctions || [],
         recentOrders: data.recentOrders || [],
       });
     } catch (err) {
@@ -145,29 +149,29 @@ export default function SellerDashboard() {
     }
   }
 
-  async function handleUpdateOrderStatus(orderId, status) {
-    if (!orderId || !status) return;
+  async function handleUpdateOrderStatus(orderItemId, status) {
+    if (!orderItemId || !status) return;
 
     try {
-      setUpdatingOrderId(orderId);
+      setUpdatingOrderItemId(orderItemId);
       setError("");
       setMessage("");
 
-      await sellerService.updateOrderStatus(orderId, status);
+      await sellerService.updateOrderStatus(orderItemId, status);
 
       setDashboard((prev) => ({
         ...prev,
         recentOrders: prev.recentOrders.map((order) =>
-          order.id === orderId ? { ...order, status } : order
+          order.orderItemId === orderItemId ? { ...order, status } : order
         ),
       }));
 
-      setMessage(`Order updated to ${formatStatus(status)}.`);
+      setMessage(`Delivery status updated to ${formatStatus(status)}.`);
     } catch (err) {
-      console.error("Update order status error:", err);
-      setError(err.message || "Failed to update order status.");
+      console.error("Update delivery status error:", err);
+      setError(err.message || "Failed to update delivery status.");
     } finally {
-      setUpdatingOrderId("");
+      setUpdatingOrderItemId("");
     }
   }
 
@@ -346,7 +350,7 @@ export default function SellerDashboard() {
                 {dashboard.recentOrders?.length === 0 ? (
                   <p className="text-slate-600">No recent orders yet.</p>
                 ) : (
-                  <table className="w-full min-w-[950px] border-collapse">
+                  <table className="w-full min-w-[1100px] border-collapse">
                     <thead>
                       <tr className="border-b border-slate-200 text-left text-sm text-slate-500">
                         <th className="pb-3 font-semibold">Order ID</th>
@@ -362,12 +366,11 @@ export default function SellerDashboard() {
                     <tbody>
                       {dashboard.recentOrders.map((order) => {
                         const nextStatus = getNextOrderStatus(order);
+                        const isAuction = order.itemType === "auction";
 
                         return (
                           <tr
-                            key={`${order.id}-${
-                              order.orderItemId || order.item
-                            }`}
+                            key={`${order.id}-${order.orderItemId}`}
                             className="border-b border-slate-100"
                           >
                             <td className="py-4 pr-4 font-semibold text-slate-900">
@@ -375,19 +378,56 @@ export default function SellerDashboard() {
                             </td>
 
                             <td className="py-4 text-slate-700">
-                              {order.buyer || "Unknown"}
+                              <p className="font-semibold">
+                                {order.buyer || "Unknown"}
+                              </p>
+
+                              {order.buyerEmail && (
+                                <p className="text-xs text-slate-400">
+                                  {order.buyerEmail}
+                                </p>
+                              )}
                             </td>
 
                             <td className="py-4 text-slate-700">
-                              {order.item || "Product"}
-                              {order.quantity ? ` x ${order.quantity}` : ""}
+                              <div className="flex items-center gap-3">
+                                {order.productImage ? (
+                                  <img
+                                    src={order.productImage}
+                                    alt={order.item || "Item"}
+                                    className="h-12 w-12 rounded-lg object-cover"
+                                  />
+                                ) : (
+                                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100 text-xs text-slate-400">
+                                    No Image
+                                  </div>
+                                )}
+
+                                <div>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="font-semibold">
+                                      {order.item || "Item"}
+                                    </p>
+
+                                    {isAuction && (
+                                      <span className="rounded-full bg-purple-100 px-2 py-1 text-xs font-bold text-purple-700">
+                                        Auction
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <p className="text-xs text-slate-400">
+                                    Qty: {order.quantity || 1}
+                                  </p>
+                                </div>
+                              </div>
                             </td>
 
                             <td className="py-4 text-slate-700">
                               {formatShippingMethod(order.shippingMethod)}
                             </td>
 
-                            <td className="py-4 text-slate-700">
+                            <td className="py-4 font-semibold text-slate-900">
                               ${Number(order.total || 0).toFixed(2)}
                             </td>
 
@@ -411,16 +451,19 @@ export default function SellerDashboard() {
                                 {nextStatus ? (
                                   <button
                                     type="button"
-                                    disabled={updatingOrderId === order.id}
+                                    disabled={
+                                      updatingOrderItemId ===
+                                      order.orderItemId
+                                    }
                                     onClick={() =>
                                       handleUpdateOrderStatus(
-                                        order.id,
+                                        order.orderItemId,
                                         nextStatus
                                       )
                                     }
                                     className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                                   >
-                                    {updatingOrderId === order.id
+                                    {updatingOrderItemId === order.orderItemId
                                       ? "Updating..."
                                       : getNextStatusButtonLabel(order)}
                                   </button>
@@ -433,10 +476,13 @@ export default function SellerDashboard() {
                                 {canCancelOrder(order) && (
                                   <button
                                     type="button"
-                                    disabled={updatingOrderId === order.id}
+                                    disabled={
+                                      updatingOrderItemId ===
+                                      order.orderItemId
+                                    }
                                     onClick={() =>
                                       handleUpdateOrderStatus(
-                                        order.id,
+                                        order.orderItemId,
                                         "cancelled"
                                       )
                                     }

@@ -15,25 +15,59 @@ const VALID_ORDER_STATUSES = [
   "collected",
 ];
 
+function getItemTitle(item) {
+  return item.product?.title || item.auction?.title || "Item";
+}
+
+function getItemImage(item) {
+  return item.product?.imageUrl || item.auction?.imageUrl || "";
+}
+
+function getItemCategory(item) {
+  return item.product?.category || item.auction?.category || "Uncategorized";
+}
+
+function getItemSellerId(item) {
+  return item.product?.sellerId || item.auction?.sellerId || "";
+}
+
+function getItemType(item) {
+  return item.auctionId ? "auction" : "product";
+}
+
 function formatSellerOrderItem(item) {
   return {
     id: item.order?.id,
     orderItemId: item.id,
+
+    itemType: getItemType(item),
+
     buyer: item.order?.user?.username || item.order?.user?.email || "Unknown",
     buyerEmail: item.order?.user?.email || "",
-    item: item.product?.title || "Product",
-    productId: item.product?.id,
-    productImage: item.product?.imageUrl || "",
-    category: item.product?.category || "Uncategorized",
+
+    item: getItemTitle(item),
+
+    // Important:
+    // Use the actual foreign key from OrderItem first.
+    // Do not rely only on item.auction?.id.
+    productId: item.productId || item.product?.id || null,
+    auctionId: item.auctionId || item.auction?.id || null,
+
+    productImage: getItemImage(item),
+    category: getItemCategory(item),
+
     quantity: item.quantity,
     price: Number(item.price || 0),
     total: Number(item.price || 0) * Number(item.quantity || 0),
-    status: item.order?.status || "pending",
+
+    status: item.deliveryStatus || "pending",
+
     shippingMethod: item.order?.shippingMethod || "",
     shippingFee: Number(item.order?.shippingFee || 0),
     orderTotal: Number(item.order?.totalAmount || 0),
+
     createdAt: item.order?.createdAt,
-    updatedAt: item.order?.updatedAt,
+    updatedAt: item.updatedAt || item.order?.updatedAt,
   };
 }
 
@@ -59,12 +93,43 @@ async function getSellerListings(sellerId) {
   });
 }
 
+async function getSellerAuctions(sellerId) {
+  return prisma.auction.findMany({
+    where: { sellerId },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      imageUrl: true,
+      category: true,
+      condition: true,
+      startingBid: true,
+      currentBid: true,
+      status: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+}
+
 async function getSellerOrderItems(sellerId) {
   return prisma.orderItem.findMany({
     where: {
-      product: {
-        sellerId,
-      },
+      OR: [
+        {
+          product: {
+            sellerId,
+          },
+        },
+        {
+          auction: {
+            sellerId,
+          },
+        },
+      ],
     },
     include: {
       order: {
@@ -83,6 +148,18 @@ async function getSellerOrderItems(sellerId) {
           title: true,
           imageUrl: true,
           category: true,
+          sellerId: true,
+        },
+      },
+      auction: {
+        select: {
+          id: true,
+          title: true,
+          imageUrl: true,
+          category: true,
+          sellerId: true,
+          currentBid: true,
+          status: true,
         },
       },
     },
@@ -96,10 +173,15 @@ router.get("/dashboard", authMiddleware, async (req, res) => {
   try {
     const sellerId = req.user.userId;
 
-    const listings = await getSellerListings(sellerId);
-    const sellerOrders = await getSellerOrderItems(sellerId);
+    const [listings, auctions, sellerOrders] = await Promise.all([
+      getSellerListings(sellerId),
+      getSellerAuctions(sellerId),
+      getSellerOrderItems(sellerId),
+    ]);
 
     const totalRevenue = sellerOrders.reduce((sum, item) => {
+      if ((item.deliveryStatus || "pending") === "cancelled") return sum;
+
       return sum + Number(item.price) * Number(item.quantity || 0);
     }, 0);
 
@@ -109,18 +191,24 @@ router.get("/dashboard", authMiddleware, async (req, res) => {
     }).length;
 
     const pendingOrders = sellerOrders.filter((item) => {
-      return item.order?.status === "pending";
+      return [
+        "pending",
+        "confirmed",
+        "preparing",
+        "ready_for_collection",
+      ].includes(item.deliveryStatus || "pending");
     }).length;
 
     const completedOrders = sellerOrders.filter((item) => {
-      return item.order?.status === "completed" || item.order?.status === "collected";
+      return ["completed", "collected"].includes(item.deliveryStatus || "");
     }).length;
 
     const recentOrders = sellerOrders.slice(0, 10).map(formatSellerOrderItem);
 
     return res.json({
       stats: {
-        activeListings: listings.length,
+        activeListings:
+          listings.length + auctions.filter((a) => a.status === "ACTIVE").length,
         ordersReceived: sellerOrders.length,
         totalRevenue,
         lowStockItems,
@@ -128,6 +216,7 @@ router.get("/dashboard", authMiddleware, async (req, res) => {
         completedOrders,
       },
       listings,
+      auctions,
       recentOrders,
     });
   } catch (error) {
@@ -157,13 +246,18 @@ router.get("/reports", authMiddleware, async (req, res) => {
     const sellerId = req.user.userId;
 
     const listings = await getSellerListings(sellerId);
+    const auctions = await getSellerAuctions(sellerId);
     const sellerOrders = await getSellerOrderItems(sellerId);
 
-    const totalRevenue = sellerOrders.reduce((sum, item) => {
-      return sum + Number(item.price) * Number(item.quantity || 0);
+    const validRevenueOrders = sellerOrders.filter((item) => {
+      return (item.deliveryStatus || "pending") !== "cancelled";
+    });
+
+    const totalRevenue = validRevenueOrders.reduce((sum, item) => {
+      return sum + Number(item.price || 0) * Number(item.quantity || 0);
     }, 0);
 
-    const totalUnitsSold = sellerOrders.reduce((sum, item) => {
+    const totalUnitsSold = validRevenueOrders.reduce((sum, item) => {
       return sum + Number(item.quantity || 0);
     }, 0);
 
@@ -172,15 +266,20 @@ router.get("/reports", authMiddleware, async (req, res) => {
     );
 
     const completedOrders = sellerOrders.filter((item) => {
-      return item.order?.status === "completed" || item.order?.status === "collected";
+      return ["completed", "collected"].includes(item.deliveryStatus || "");
     });
 
     const pendingOrders = sellerOrders.filter((item) => {
-      return item.order?.status === "pending";
+      return [
+        "pending",
+        "confirmed",
+        "preparing",
+        "ready_for_collection",
+      ].includes(item.deliveryStatus || "pending");
     });
 
     const cancelledOrders = sellerOrders.filter((item) => {
-      return item.order?.status === "cancelled";
+      return (item.deliveryStatus || "pending") === "cancelled";
     });
 
     const averageOrderValue =
@@ -188,23 +287,25 @@ router.get("/reports", authMiddleware, async (req, res) => {
 
     const productMap = {};
 
-    sellerOrders.forEach((item) => {
-      const productId = item.product?.id || item.productId;
-      const productName = item.product?.title || "Product";
+    validRevenueOrders.forEach((item) => {
+      const itemId = item.product?.id || item.auction?.id || item.id;
+      const itemName = getItemTitle(item);
+      const itemType = getItemType(item);
       const quantity = Number(item.quantity || 0);
       const revenue = Number(item.price || 0) * quantity;
 
-      if (!productMap[productId]) {
-        productMap[productId] = {
-          productId,
-          productName,
+      if (!productMap[itemId]) {
+        productMap[itemId] = {
+          productId: itemId,
+          productName: itemName,
+          itemType,
           unitsSold: 0,
           revenue: 0,
         };
       }
 
-      productMap[productId].unitsSold += quantity;
-      productMap[productId].revenue += revenue;
+      productMap[itemId].unitsSold += quantity;
+      productMap[itemId].revenue += revenue;
     });
 
     const topProducts = Object.values(productMap).sort((a, b) => {
@@ -213,8 +314,8 @@ router.get("/reports", authMiddleware, async (req, res) => {
 
     const categoryMap = {};
 
-    sellerOrders.forEach((item) => {
-      const category = item.product?.category || "Uncategorized";
+    validRevenueOrders.forEach((item) => {
+      const category = getItemCategory(item);
       const quantity = Number(item.quantity || 0);
       const revenue = Number(item.price || 0) * quantity;
 
@@ -249,7 +350,8 @@ router.get("/reports", authMiddleware, async (req, res) => {
         completedOrders: completedOrders.length,
         pendingOrders: pendingOrders.length,
         cancelledOrders: cancelledOrders.length,
-        activeListings: listings.length,
+        activeListings:
+          listings.length + auctions.filter((a) => a.status === "ACTIVE").length,
         lowStockItems: lowStockListings.length,
       },
       topProducts,
@@ -283,23 +385,28 @@ router.get("/shop", authMiddleware, async (req, res) => {
     });
 
     const listings = await getSellerListings(sellerId);
+    const auctions = await getSellerAuctions(sellerId);
 
-    const categories = [...new Set(listings.map((item) => item.category).filter(Boolean))];
+    const categories = [
+      ...new Set(
+        [...listings, ...auctions].map((item) => item.category).filter(Boolean)
+      ),
+    ];
 
     const deliveryMethods = [
-      ...new Set(
-        listings.flatMap((item) => item.deliveryMethods || [])
-      ),
+      ...new Set(listings.flatMap((item) => item.deliveryMethods || [])),
     ];
 
     return res.json({
       seller,
       stats: {
         totalListings: listings.length,
+        totalAuctions: auctions.length,
         categories: categories.length,
         deliveryMethods,
       },
       listings,
+      auctions,
       categories,
     });
   } catch (error) {
@@ -309,6 +416,81 @@ router.get("/shop", authMiddleware, async (req, res) => {
     });
   }
 });
+
+router.patch(
+  "/order-items/:orderItemId/status",
+  authMiddleware,
+  async (req, res) => {
+    try {
+      const sellerId = req.user.userId;
+      const { orderItemId } = req.params;
+      const { status } = req.body;
+
+      if (!VALID_ORDER_STATUSES.includes(status)) {
+        return res.status(400).json({
+          message: "Invalid order status",
+        });
+      }
+
+      const sellerOrderItem = await prisma.orderItem.findUnique({
+        where: {
+          id: orderItemId,
+        },
+        include: {
+          product: true,
+          auction: true,
+        },
+      });
+
+      if (!sellerOrderItem) {
+        return res.status(404).json({
+          message: "Order item not found",
+        });
+      }
+
+      const itemSellerId = getItemSellerId(sellerOrderItem);
+
+      if (itemSellerId !== sellerId) {
+        return res.status(403).json({
+          message: "You are not authorized to update this order item",
+        });
+      }
+
+      const updatedOrderItem = await prisma.orderItem.update({
+        where: {
+          id: orderItemId,
+        },
+        data: {
+          deliveryStatus: status,
+        },
+        include: {
+          product: true,
+          auction: true,
+          order: {
+            include: {
+              user: {
+                select: {
+                  username: true,
+                  email: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      return res.json({
+        message: "Delivery status updated",
+        order: formatSellerOrderItem(updatedOrderItem),
+      });
+    } catch (error) {
+      console.error("Update seller order item status error:", error);
+      return res.status(500).json({
+        message: "Server error updating delivery status",
+      });
+    }
+  }
+);
 
 router.patch("/orders/:orderId/status", authMiddleware, async (req, res) => {
   try {
@@ -322,44 +504,47 @@ router.patch("/orders/:orderId/status", authMiddleware, async (req, res) => {
       });
     }
 
-    const sellerOrderItem = await prisma.orderItem.findFirst({
+    const sellerOrderItems = await prisma.orderItem.findMany({
       where: {
         orderId,
-        product: {
-          sellerId,
-        },
+        OR: [
+          {
+            product: {
+              sellerId,
+            },
+          },
+          {
+            auction: {
+              sellerId,
+            },
+          },
+        ],
       },
       include: {
-        order: true,
         product: true,
+        auction: true,
       },
     });
 
-    if (!sellerOrderItem) {
+    if (!sellerOrderItems.length) {
       return res.status(404).json({
         message: "Order not found for this seller",
       });
     }
 
-    const updatedOrder = await prisma.order.update({
+    await prisma.orderItem.updateMany({
       where: {
-        id: orderId,
+        id: {
+          in: sellerOrderItems.map((item) => item.id),
+        },
       },
       data: {
-        status,
-      },
-      include: {
-        items: {
-          include: {
-            product: true,
-          },
-        },
+        deliveryStatus: status,
       },
     });
 
     return res.json({
-      message: "Order status updated",
-      order: updatedOrder,
+      message: "Order item statuses updated",
     });
   } catch (error) {
     console.error("Update seller order status error:", error);

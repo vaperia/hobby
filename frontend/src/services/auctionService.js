@@ -29,9 +29,9 @@ export const auctionService = {
     return api.get("/auctions/seller/my-auctions");
   },
 
-  placeBid: async (auctionId, amount) => {
+  placeBid: async (auctionId, amountToAdd) => {
     return api.post(`/auctions/${auctionId}/bids`, {
-      amount,
+      amountToAdd,
     });
   },
 

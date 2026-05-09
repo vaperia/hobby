@@ -47,13 +47,28 @@ export default function AuctionCountdown({
   onEnd,
 }) {
   const [time, setTime] = useState(() => getTimeParts(endsAt));
+
   const hasTriggeredEndRef = useRef(false);
+  const onEndRef = useRef(onEnd);
 
   const isAuctionEndedByStatus = status && status !== "ACTIVE";
 
   useEffect(() => {
+    onEndRef.current = onEnd;
+  }, [onEnd]);
+
+  useEffect(() => {
     hasTriggeredEndRef.current = false;
     setTime(getTimeParts(endsAt));
+  }, [endsAt, status]);
+
+  useEffect(() => {
+    if (!endsAt) return;
+
+    if (isAuctionEndedByStatus) {
+      setTime(getTimeParts(endsAt));
+      return;
+    }
 
     const interval = setInterval(() => {
       const nextTime = getTimeParts(endsAt);
@@ -62,15 +77,18 @@ export default function AuctionCountdown({
       if (nextTime.isEnded) {
         clearInterval(interval);
 
-        if (!hasTriggeredEndRef.current && onEnd && !isAuctionEndedByStatus) {
+        if (!hasTriggeredEndRef.current) {
           hasTriggeredEndRef.current = true;
-          onEnd();
+
+          if (onEndRef.current) {
+            onEndRef.current();
+          }
         }
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [endsAt, onEnd, isAuctionEndedByStatus]);
+  }, [endsAt, isAuctionEndedByStatus]);
 
   const label = useMemo(() => {
     if (isAuctionEndedByStatus) {

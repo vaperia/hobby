@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import PageLayout from "../components/PageLayout";
 import AuctionCountdown from "../components/AuctionCountdown";
+import ExpiredAuctionActions from "../components/ExpiredAuctionActions";
 import { auctionService } from "../services/auctionService";
+
+const API_BASE = "http://localhost:5000/api";
 
 function formatStatus(status) {
   if (!status) return "Active";
@@ -13,16 +16,84 @@ function formatStatus(status) {
     .join(" ");
 }
 
-function isPaymentOverdue(auction) {
+function hasAuctionEnded(auction) {
+  return auction.endsAt && new Date(auction.endsAt) <= new Date();
+}
+
+function hasEndedWithoutBids(auction) {
   return (
-    auction.status === "AWAITING_PAYMENT" &&
-    auction.paymentDueAt &&
-    new Date(auction.paymentDueAt) < new Date()
+    hasAuctionEnded(auction) &&
+    auction.status === "ACTIVE" &&
+    (!auction.bids || auction.bids.length === 0)
   );
 }
 
+function isPaymentOverdueOrForfeited(auction) {
+  return (
+    auction.status === "EXPIRED_UNPAID" ||
+    hasEndedWithoutBids(auction) ||
+    (auction.status === "AWAITING_PAYMENT" &&
+      auction.paymentDueAt &&
+      new Date(auction.paymentDueAt) < new Date())
+  );
+}
+
+function getStatusBadgeClass(auction, overdueOrForfeited) {
+  if (auction.completedOrderStatus === "completed") {
+    return "bg-green-100 text-green-700";
+  }
+
+  if (auction.completedOrderStatus === "collected") {
+    return "bg-green-100 text-green-700";
+  }
+
+  if (auction.status === "PAID") {
+    return "bg-green-100 text-green-700";
+  }
+
+  if (auction.status === "EXPIRED_UNPAID" || hasEndedWithoutBids(auction)) {
+    return "bg-orange-100 text-orange-700";
+  }
+
+  if (overdueOrForfeited) {
+    return "bg-red-100 text-red-700";
+  }
+
+  return "bg-blue-100 text-blue-700";
+}
+
+function getStatusText(auction, overdueOrForfeited) {
+  if (auction.completedOrderStatus === "completed") {
+    return "Order Completed";
+  }
+
+  if (auction.completedOrderStatus === "collected") {
+    return "Order Collected";
+  }
+
+  if (auction.status === "EXPIRED_UNPAID" || hasEndedWithoutBids(auction)) {
+    return "Auction Ended";
+  }
+
+  if (overdueOrForfeited) {
+    return "Payment Overdue";
+  }
+
+  return formatStatus(auction.status);
+}
+
 function canEditAuction(auction) {
-  return auction.status !== "PAID" && auction.status !== "AWAITING_PAYMENT";
+  const auctionEnded = hasAuctionEnded(auction);
+
+  return !auctionEnded && auction.status === "ACTIVE";
+}
+
+function canMarkCompleted(auction) {
+  return (
+    auction.status === "PAID" &&
+    auction.completedOrderStatus !== "completed" &&
+    auction.completedOrderStatus !== "collected"
+  );
 }
 
 export default function SellerAuctions() {
@@ -32,9 +103,14 @@ export default function SellerAuctions() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  async function loadAuctions() {
+  const loadAuctions = useCallback(async (options = {}) => {
+    const silent = options.silent || false;
+
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
+
       setError("");
 
       const data = await auctionService.getSellerAuctions();
@@ -43,35 +119,19 @@ export default function SellerAuctions() {
       console.error("Load seller auctions error:", err);
       setError(err.message || "Failed to load seller auctions.");
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
-  }
+  }, []);
 
   useEffect(() => {
     loadAuctions();
-  }, []);
-
-  async function handleReallocate(id) {
-    try {
-      setActionId(id);
-      setError("");
-      setMessage("");
-
-      await auctionService.reallocate(id);
-
-      setMessage("Auction offered to next highest bidder.");
-      await loadAuctions();
-    } catch (err) {
-      console.error("Reallocate auction error:", err);
-      setError(err.message || "Failed to reallocate auction.");
-    } finally {
-      setActionId("");
-    }
-  }
+  }, [loadAuctions]);
 
   async function handleDelete(id) {
     const confirmDelete = window.confirm(
-      "Delete this auction? You can only delete auctions with no bids."
+      "Delete this auction posting? This removes the auction listing from your seller auction page."
     );
 
     if (!confirmDelete) return;
@@ -81,16 +141,71 @@ export default function SellerAuctions() {
       setError("");
       setMessage("");
 
-      await auctionService.remove(id);
+      const token = localStorage.getItem("token");
 
-      setMessage("Auction deleted.");
-      await loadAuctions();
+      const res = await fetch(`${API_BASE}/auctions/${id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to delete auction posting.");
+      }
+
+      setMessage("Auction posting deleted.");
+      await loadAuctions({ silent: true });
     } catch (err) {
       console.error("Delete auction error:", err);
-      setError(err.message || "Failed to delete auction.");
+      setError(err.message || "Failed to delete auction posting.");
     } finally {
       setActionId("");
     }
+  }
+
+  async function handleCompleteAuctionOrder(id) {
+    const confirmComplete = window.confirm(
+      "Mark this auction order as completed?"
+    );
+
+    if (!confirmComplete) return;
+
+    try {
+      setActionId(id);
+      setError("");
+      setMessage("");
+
+      const token = localStorage.getItem("token");
+
+      const res = await fetch(`${API_BASE}/auctions/${id}/complete-order`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to complete auction order.");
+      }
+
+      setMessage("Auction order marked as completed.");
+      await loadAuctions({ silent: true });
+    } catch (err) {
+      console.error("Complete auction order error:", err);
+      setError(err.message || "Failed to complete auction order.");
+    } finally {
+      setActionId("");
+    }
+  }
+
+  async function handleActionComplete() {
+    setMessage("Auction updated successfully.");
+    await loadAuctions({ silent: true });
   }
 
   return (
@@ -103,7 +218,8 @@ export default function SellerAuctions() {
             </h1>
 
             <p className="mt-2 text-slate-500">
-              Manage auction listings, payment deadlines, and reallocations.
+              Manage auction listings, payment deadlines, completed auction
+              orders, and forfeited payments.
             </p>
           </div>
 
@@ -134,7 +250,7 @@ export default function SellerAuctions() {
             <p className="text-slate-600">You have no auctions yet.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1200px] border-collapse">
+              <table className="w-full min-w-[1300px] border-collapse">
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-sm text-slate-500">
                     <th className="pb-3 font-semibold">Auction</th>
@@ -153,12 +269,19 @@ export default function SellerAuctions() {
                     const currentBid =
                       auction.currentBid || auction.startingBid || 0;
 
-                    const overdue = isPaymentOverdue(auction);
+                    const overdueOrForfeited =
+                      isPaymentOverdueOrForfeited(auction);
+
+                    const showExpiredActions =
+                      overdueOrForfeited || hasEndedWithoutBids(auction);
+
+                    const showDeleteButton =
+                      auction.canDeletePosting || hasEndedWithoutBids(auction);
 
                     return (
                       <tr
                         key={auction.id}
-                        className="border-b border-slate-100"
+                        className="border-b border-slate-100 align-top"
                       >
                         <td className="py-4 pr-4">
                           <div className="flex items-center gap-3">
@@ -202,17 +325,12 @@ export default function SellerAuctions() {
 
                         <td className="py-4">
                           <span
-                            className={`rounded-full px-3 py-1 text-sm font-semibold ${
-                              overdue
-                                ? "bg-red-100 text-red-700"
-                                : auction.status === "PAID"
-                                ? "bg-green-100 text-green-700"
-                                : "bg-blue-100 text-blue-700"
-                            }`}
+                            className={`rounded-full px-3 py-1 text-sm font-semibold ${getStatusBadgeClass(
+                              auction,
+                              overdueOrForfeited
+                            )}`}
                           >
-                            {overdue
-                              ? "Payment Overdue"
-                              : formatStatus(auction.status)}
+                            {getStatusText(auction, overdueOrForfeited)}
                           </span>
                         </td>
 
@@ -221,7 +339,7 @@ export default function SellerAuctions() {
                             endsAt={auction.endsAt}
                             status={auction.status}
                             compact
-                            onEnd={loadAuctions}
+                            onEnd={() => loadAuctions({ silent: true })}
                           />
                         </td>
 
@@ -232,7 +350,7 @@ export default function SellerAuctions() {
                         </td>
 
                         <td className="py-4">
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <Link
                               to={`/auctions/${auction.id}`}
                               className="rounded-md bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
@@ -249,28 +367,40 @@ export default function SellerAuctions() {
                               </Link>
                             )}
 
-                            {overdue && (
+                            {canMarkCompleted(auction) && (
                               <button
                                 type="button"
                                 disabled={actionId === auction.id}
-                                onClick={() => handleReallocate(auction.id)}
-                                className="rounded-md bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
+                                onClick={() =>
+                                  handleCompleteAuctionOrder(auction.id)
+                                }
+                                className="rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
                               >
-                                Offer to Next Bidder
+                                {actionId === auction.id
+                                  ? "Updating..."
+                                  : "Mark Completed"}
                               </button>
                             )}
 
-                            {auction.bids?.length === 0 &&
-                              auction.status === "ACTIVE" && (
-                                <button
-                                  type="button"
-                                  disabled={actionId === auction.id}
-                                  onClick={() => handleDelete(auction.id)}
-                                  className="rounded-md bg-red-500 px-3 py-2 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-60"
-                                >
-                                  Delete
-                                </button>
-                              )}
+                            {showExpiredActions && (
+                              <ExpiredAuctionActions
+                                auction={auction}
+                                onActionComplete={handleActionComplete}
+                              />
+                            )}
+
+                            {showDeleteButton && (
+                              <button
+                                type="button"
+                                disabled={actionId === auction.id}
+                                onClick={() => handleDelete(auction.id)}
+                                className="rounded-md bg-red-500 px-3 py-2 text-sm font-semibold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {actionId === auction.id
+                                  ? "Deleting..."
+                                  : "Delete Posting"}
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

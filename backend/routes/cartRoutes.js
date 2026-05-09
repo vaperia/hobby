@@ -4,6 +4,16 @@ const authMiddleware = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
+function getCartItemPrice(item) {
+  return Number(
+    item.price ??
+      item.product?.price ??
+      item.auction?.currentBid ??
+      item.auction?.startingBid ??
+      0
+  );
+}
+
 router.get("/", authMiddleware, async (req, res) => {
   try {
     const cartItems = await prisma.cartItem.findMany({
@@ -20,12 +30,31 @@ router.get("/", authMiddleware, async (req, res) => {
             },
           },
         },
+        auction: {
+          include: {
+            seller: {
+              select: {
+                id: true,
+                username: true,
+                email: true,
+              },
+            },
+            winner: {
+              select: {
+                id: true,
+                username: true,
+                email: true,
+              },
+            },
+          },
+        },
       },
       orderBy: { createdAt: "desc" },
     });
 
     const total = cartItems.reduce((sum, item) => {
-      return sum + item.quantity * item.product.price;
+      const price = getCartItemPrice(item);
+      return sum + Number(item.quantity || 1) * price;
     }, 0);
 
     res.json({
@@ -54,6 +83,12 @@ router.post("/items", authMiddleware, async (req, res) => {
       return res.status(404).json({ message: "Product not found" });
     }
 
+    if (product.sellerId === req.user.userId) {
+      return res.status(400).json({
+        message: "You cannot add your own product to cart",
+      });
+    }
+
     const existingItem = await prisma.cartItem.findUnique({
       where: {
         userId_productId: {
@@ -70,9 +105,11 @@ router.post("/items", authMiddleware, async (req, res) => {
         where: { id: existingItem.id },
         data: {
           quantity: existingItem.quantity + Number(quantity),
+          price: Number(product.price),
         },
         include: {
           product: true,
+          auction: true,
         },
       });
     } else {
@@ -81,9 +118,11 @@ router.post("/items", authMiddleware, async (req, res) => {
           userId: req.user.userId,
           productId,
           quantity: Number(quantity),
+          price: Number(product.price),
         },
         include: {
           product: true,
+          auction: true,
         },
       });
     }
@@ -115,11 +154,18 @@ router.patch("/items/:itemId", authMiddleware, async (req, res) => {
       return res.status(404).json({ message: "Cart item not found" });
     }
 
+    if (existingItem.auctionId) {
+      return res.status(400).json({
+        message: "Auction items must stay as quantity 1",
+      });
+    }
+
     const updatedItem = await prisma.cartItem.update({
       where: { id: itemId },
       data: { quantity: Number(quantity) },
       include: {
         product: true,
+        auction: true,
       },
     });
 

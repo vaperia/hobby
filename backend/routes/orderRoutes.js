@@ -12,6 +12,7 @@ router.get("/", authMiddleware, async (req, res) => {
         items: {
           include: {
             product: true,
+            auction: true,
           },
         },
       },
@@ -38,6 +39,17 @@ router.get("/:orderId", authMiddleware, async (req, res) => {
         items: {
           include: {
             product: {
+              include: {
+                seller: {
+                  select: {
+                    id: true,
+                    username: true,
+                    email: true,
+                  },
+                },
+              },
+            },
+            auction: {
               include: {
                 seller: {
                   select: {
