@@ -96,6 +96,18 @@ export default function Navbar() {
                   Orders
                 </Link>
 
+                <Link to="/create-listing" className="hover:text-orange-200">
+                  Sell Item
+                </Link>
+
+                <Link to="/create-auction" className="hover:text-orange-200">
+                  Create Auction
+                </Link>
+
+                <Link to="/profile" className="hover:text-orange-200">
+                  My Profile
+                </Link>
+
                 {isSeller && (
                   <Link to="/seller" className="hover:text-orange-200">
                     Seller Dashboard

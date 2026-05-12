@@ -13,6 +13,11 @@ const PAID = "PAID";
 const CANCELLED = "CANCELLED";
 const EXPIRED_UNPAID = "EXPIRED_UNPAID";
 
+function getSellerType(user) {
+  const role = String(user?.role || "buyer").toLowerCase();
+  return role === "seller" || role === "admin" ? "SHOP" : "PRIVATE";
+}
+
 function getPaymentDueDate() {
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 3);
@@ -467,6 +472,7 @@ router.post("/", authMiddleware, upload.single("image"), async (req, res) => {
     }
 
     const imageUrl = await uploadImageToFirebase(req.file);
+    const sellerType = getSellerType(req.user);
 
     const auction = await prisma.auction.create({
       data: {
@@ -482,6 +488,7 @@ router.post("/", authMiddleware, upload.single("image"), async (req, res) => {
         endsAt: new Date(endsAt),
         status: ACTIVE,
         sellerId: req.user.userId,
+        sellerType,
       },
     });
 
@@ -1184,6 +1191,7 @@ router.post("/:id/convert-to-product", authMiddleware, async (req, res) => {
           stock: listingStock,
           deliveryMethods: parsedDeliveryMethods,
           sellerId: auction.sellerId,
+          sellerType: auction.sellerType || "PRIVATE",
         },
       });
 

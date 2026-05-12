@@ -23,9 +23,6 @@ export default function ProductCard({ product }) {
           product.image_path ||
           "";
 
-        console.log("PRODUCT DATA:", product);
-        console.log("RAW IMAGE VALUE:", rawImage);
-
         if (!rawImage) {
           if (isMounted) setImageSrc("");
           return;
@@ -61,6 +58,7 @@ export default function ProductCard({ product }) {
 
   const productName = product.name || product.title || "Unnamed Product";
   const price = Number(product.price || 0);
+  const sellerType = product.sellerType === "SHOP" ? "Shop Seller" : "Private Seller";
 
   return (
     <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:border-orange-200 hover:shadow-md">
@@ -78,13 +76,31 @@ export default function ProductCard({ product }) {
       )}
 
       <div className="p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-purple-600">
-          {product.category}
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-purple-600">
+            {product.category || "Item"}
+          </p>
+
+          <span
+            className={`rounded-full px-2 py-1 text-[11px] font-bold ${
+              product.sellerType === "SHOP"
+                ? "bg-blue-50 text-blue-700"
+                : "bg-orange-50 text-orange-700"
+            }`}
+          >
+            {sellerType}
+          </span>
+        </div>
 
         <h3 className="mt-2 line-clamp-2 text-sm font-semibold text-slate-900">
           {productName}
         </h3>
+
+        {product.seller?.username && (
+          <p className="mt-1 text-xs text-slate-500">
+            Sold by {product.seller.username}
+          </p>
+        )}
 
         <p className="mt-3 text-lg font-bold text-red-500">
           ${price.toFixed(2)}

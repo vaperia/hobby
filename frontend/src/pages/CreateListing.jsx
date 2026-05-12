@@ -103,11 +103,11 @@ export default function CreateListing() {
       <main className="mx-auto max-w-4xl px-6 py-16">
         <div className="rounded-2xl bg-white p-8 shadow-md">
           <h1 className="text-3xl font-black text-slate-900">
-            Create New Listing
+            Sell an Item
           </h1>
 
           <p className="mt-2 text-slate-500">
-            Add a new product for buyers to discover
+            List an item in the marketplace. It will be shown as Shop Seller or Private Seller automatically based on your account role.
           </p>
 
           {message && (

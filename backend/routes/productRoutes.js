@@ -10,6 +10,16 @@ const router = express.Router();
 const DEFAULT_DELIVERY_METHODS = ["SELF_COLLECTION", "STANDARD_DELIVERY"];
 const VALID_DELIVERY_METHODS = ["SELF_COLLECTION", "STANDARD_DELIVERY"];
 
+function getSellerType(user) {
+  const role = String(user?.role || "buyer").toLowerCase();
+
+  if (role === "seller" || role === "admin") {
+    return "SHOP";
+  }
+
+  return "PRIVATE";
+}
+
 function parseDeliveryMethods(
   deliveryMethods,
   fallback = DEFAULT_DELIVERY_METHODS
@@ -41,10 +51,8 @@ function parseDeliveryMethods(
 async function uploadImageToFirebase(file) {
   if (!file) return null;
 
-  const fileName = `listings/${Date.now()}-${file.originalname.replace(
-    /\s+/g,
-    "-"
-  )}`;
+  const safeFileName = file.originalname.replace(/\s+/g, "-");
+  const fileName = `listings/${Date.now()}-${safeFileName}`;
 
   const firebaseFile = bucket.file(fileName);
 
@@ -125,8 +133,13 @@ router.get("/", async (req, res) => {
     };
 
     if (limit) {
-      queryOptions.take = Number(limit);
-      queryOptions.skip = (Number(page) - 1) * Number(limit);
+      const take = Number(limit);
+      const currentPage = Number(page);
+
+      if (!Number.isNaN(take) && take > 0) {
+        queryOptions.take = take;
+        queryOptions.skip = (currentPage - 1) * take;
+      }
     }
 
     const products = await prisma.listing.findMany(queryOptions);
@@ -134,7 +147,9 @@ router.get("/", async (req, res) => {
     return res.json(products);
   } catch (error) {
     console.error("Get products error:", error);
-    return res.status(500).json({ message: "Server error fetching products" });
+    return res.status(500).json({
+      message: "Server error fetching products",
+    });
   }
 });
 
@@ -153,32 +168,95 @@ router.post("/", authMiddleware, upload.single("image"), async (req, res) => {
 
     const productTitle = title || name;
 
-    if (!productTitle || price === undefined) {
-      return res.status(400).json({ message: "Title and price are required" });
+    if (!productTitle || price === undefined || price === "") {
+      return res.status(400).json({
+        message: "Title and price are required",
+      });
+    }
+
+    const priceNumber = Number(price);
+    const stockNumber = Number(stock || 0);
+
+    if (Number.isNaN(priceNumber) || priceNumber < 0) {
+      return res.status(400).json({
+        message: "Price must be a valid number",
+      });
+    }
+
+    if (Number.isNaN(stockNumber) || stockNumber < 0) {
+      return res.status(400).json({
+        message: "Stock must be a valid number",
+      });
     }
 
     const parsedDeliveryMethods = parseDeliveryMethods(deliveryMethods);
-
+    const sellerType = getSellerType(req.user);
     const imageUrl = await uploadImageToFirebase(req.file);
 
     const product = await prisma.listing.create({
       data: {
         title: productTitle,
         description,
-        price: Number(price),
-        stock: Number(stock || 0),
+        price: priceNumber,
+        stock: stockNumber,
         imageUrl,
         category,
         condition,
         deliveryMethods: parsedDeliveryMethods,
         sellerId: req.user.userId,
+        sellerType,
+      },
+      include: {
+        seller: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+          },
+        },
       },
     });
 
     return res.status(201).json(product);
   } catch (error) {
     console.error("Create product error:", error);
-    return res.status(500).json({ message: "Server error creating product" });
+    return res.status(500).json({
+      message: "Server error creating product",
+    });
+  }
+});
+
+/**
+ * IMPORTANT:
+ * This route must be above router.get("/:id")
+ * or Express will treat "seller/my-listings" as an id.
+ */
+router.get("/seller/my-listings", authMiddleware, async (req, res) => {
+  try {
+    const listings = await prisma.listing.findMany({
+      where: {
+        sellerId: req.user.userId,
+      },
+      include: {
+        seller: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    return res.json(listings);
+  } catch (error) {
+    console.error("Get my listings error:", error);
+    return res.status(500).json({
+      message: "Server error fetching your listings",
+    });
   }
 });
 
@@ -200,13 +278,17 @@ router.get("/:id", async (req, res) => {
     });
 
     if (!product) {
-      return res.status(404).json({ message: "Product not found" });
+      return res.status(404).json({
+        message: "Product not found",
+      });
     }
 
     return res.json(product);
   } catch (error) {
     console.error("Get product by id error:", error);
-    return res.status(500).json({ message: "Server error fetching product" });
+    return res.status(500).json({
+      message: "Server error fetching product",
+    });
   }
 });
 
@@ -232,7 +314,9 @@ router.put("/:id", authMiddleware, upload.single("image"), async (req, res) => {
     });
 
     if (!existingProduct) {
-      return res.status(404).json({ message: "Product not found" });
+      return res.status(404).json({
+        message: "Product not found",
+      });
     }
 
     if (existingProduct.sellerId !== req.user.userId) {
@@ -241,8 +325,25 @@ router.put("/:id", authMiddleware, upload.single("image"), async (req, res) => {
       });
     }
 
-    if (!productTitle || price === undefined) {
-      return res.status(400).json({ message: "Title and price are required" });
+    if (!productTitle || price === undefined || price === "") {
+      return res.status(400).json({
+        message: "Title and price are required",
+      });
+    }
+
+    const priceNumber = Number(price);
+    const stockNumber = Number(stock || 0);
+
+    if (Number.isNaN(priceNumber) || priceNumber < 0) {
+      return res.status(400).json({
+        message: "Price must be a valid number",
+      });
+    }
+
+    if (Number.isNaN(stockNumber) || stockNumber < 0) {
+      return res.status(400).json({
+        message: "Stock must be a valid number",
+      });
     }
 
     const parsedDeliveryMethods = parseDeliveryMethods(
@@ -263,12 +364,21 @@ router.put("/:id", authMiddleware, upload.single("image"), async (req, res) => {
       data: {
         title: productTitle,
         description,
-        price: Number(price),
-        stock: Number(stock || 0),
+        price: priceNumber,
+        stock: stockNumber,
         category,
         condition,
         imageUrl,
         deliveryMethods: parsedDeliveryMethods,
+      },
+      include: {
+        seller: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+          },
+        },
       },
     });
 
@@ -279,7 +389,9 @@ router.put("/:id", authMiddleware, upload.single("image"), async (req, res) => {
     return res.json(updatedProduct);
   } catch (error) {
     console.error("Update product error:", error);
-    return res.status(500).json({ message: "Server error updating product" });
+    return res.status(500).json({
+      message: "Server error updating product",
+    });
   }
 });
 
@@ -292,7 +404,9 @@ router.post("/:id/convert-to-auction", authMiddleware, async (req, res) => {
     });
 
     if (!listing) {
-      return res.status(404).json({ message: "Listing not found" });
+      return res.status(404).json({
+        message: "Listing not found",
+      });
     }
 
     if (listing.sellerId !== req.user.userId) {
@@ -328,7 +442,9 @@ router.post("/:id/convert-to-auction", authMiddleware, async (req, res) => {
     const endDate = new Date(endsAt);
 
     if (!auctionTitle) {
-      return res.status(400).json({ message: "Auction title is required." });
+      return res.status(400).json({
+        message: "Auction title is required.",
+      });
     }
 
     if (!startingBidNumber || startingBidNumber <= 0) {
@@ -370,6 +486,13 @@ router.post("/:id/convert-to-auction", authMiddleware, async (req, res) => {
           endsAt: endDate,
           status: "ACTIVE",
           sellerId: listing.sellerId,
+          sellerType: listing.sellerType || "PRIVATE",
+        },
+      });
+
+      await tx.cartItem.deleteMany({
+        where: {
+          productId: listing.id,
         },
       });
 
@@ -404,7 +527,9 @@ router.delete("/:id", authMiddleware, async (req, res) => {
     });
 
     if (!existingProduct) {
-      return res.status(404).json({ message: "Product not found" });
+      return res.status(404).json({
+        message: "Product not found",
+      });
     }
 
     if (existingProduct.sellerId !== req.user.userId) {
@@ -415,8 +540,27 @@ router.delete("/:id", authMiddleware, async (req, res) => {
 
     const imageUrlToDelete = existingProduct.imageUrl;
 
-    await prisma.listing.delete({
-      where: { id },
+    await prisma.$transaction(async (tx) => {
+      await tx.cartItem.deleteMany({
+        where: {
+          productId: existingProduct.id,
+        },
+      });
+
+      await tx.orderItem.updateMany({
+        where: {
+          productId: existingProduct.id,
+        },
+        data: {
+          productId: null,
+        },
+      });
+
+      await tx.listing.delete({
+        where: {
+          id: existingProduct.id,
+        },
+      });
     });
 
     await deleteImageFromFirebase(imageUrlToDelete);
@@ -426,7 +570,9 @@ router.delete("/:id", authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error("Delete product error:", error);
-    return res.status(500).json({ message: "Server error deleting product" });
+    return res.status(500).json({
+      message: "Server error deleting product",
+    });
   }
 });
 

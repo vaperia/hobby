@@ -62,7 +62,7 @@ export default function CreateAuction() {
 
       await auctionService.create(formData);
 
-      navigate("/seller/auctions");
+      navigate("/auctions");
     } catch (err) {
       console.error("Create auction error:", err);
       setError(err.message || "Failed to create auction.");

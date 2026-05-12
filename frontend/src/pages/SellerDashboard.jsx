@@ -215,23 +215,13 @@ export default function SellerDashboard() {
     },
     {
       title: "My Shop",
-      description: "Preview your public shop and product listings.",
+      description: "Preview your marketplace and auction listings.",
       link: "/seller/shop",
-    },
-    {
-      title: "Create Listing",
-      description: "Add a fixed-price product to your shop.",
-      link: "/seller/products/new",
     },
     {
       title: "Manage Auctions",
       description: "View auction listings, bidders, and payment deadlines.",
       link: "/seller/auctions",
-    },
-    {
-      title: "Create Auction",
-      description: "Create an auction with bidding and optional buyout.",
-      link: "/seller/auctions/new",
     },
   ];
 
@@ -510,124 +500,275 @@ export default function SellerDashboard() {
                   </h2>
 
                   <p className="mt-1 text-slate-500">
-                    View and edit products you have listed.
+                    View and edit your marketplace listings and auction listings.
                   </p>
                 </div>
 
-                <Link
-                  to="/seller/products/new"
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                >
-                  Add Listing
-                </Link>
+                <div className="flex flex-wrap gap-3">
+                  <Link
+                    to="/seller/products/new"
+                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                  >
+                    Add Marketplace Listing
+                  </Link>
+
+                  <Link
+                    to="/seller/auctions/new"
+                    className="rounded-md bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-800"
+                  >
+                    Add Auction Listing
+                  </Link>
+                </div>
               </div>
 
-              <div className="mt-6 overflow-x-auto">
-                {dashboard.listings?.length === 0 ? (
-                  <p className="text-slate-600">
-                    You have not created any listings yet.
-                  </p>
-                ) : (
-                  <table className="w-full min-w-[900px] border-collapse">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-left text-sm text-slate-500">
-                        <th className="pb-3 font-semibold">Product</th>
-                        <th className="pb-3 font-semibold">Category</th>
-                        <th className="pb-3 font-semibold">Price</th>
-                        <th className="pb-3 font-semibold">Stock</th>
-                        <th className="pb-3 font-semibold">Condition</th>
-                        <th className="pb-3 font-semibold">Actions</th>
-                      </tr>
-                    </thead>
+              <div className="mt-8">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-900">
+                      Marketplace Listings
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Fixed-price products currently listed in your shop.
+                    </p>
+                  </div>
 
-                    <tbody>
-                      {dashboard.listings.map((listing) => {
-                        const productName =
-                          listing.title || listing.name || "Product";
+                  <span className="rounded-full bg-blue-100 px-3 py-1 text-sm font-bold text-blue-700">
+                    {dashboard.listings?.length || 0} items
+                  </span>
+                </div>
 
-                        return (
-                          <tr
-                            key={listing.id}
-                            className="border-b border-slate-100"
-                          >
-                            <td className="py-4 pr-4">
-                              <div className="flex items-center gap-3">
-                                {listing.imageUrl ? (
-                                  <img
-                                    src={listing.imageUrl}
-                                    alt={productName}
-                                    className="h-14 w-14 rounded-lg object-cover"
-                                  />
-                                ) : (
-                                  <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-slate-100 text-xs text-slate-400">
-                                    No Image
+                <div className="mt-6 overflow-x-auto">
+                  {dashboard.listings?.length === 0 ? (
+                    <p className="rounded-xl bg-slate-50 p-5 text-slate-600">
+                      You have not created any marketplace listings yet.
+                    </p>
+                  ) : (
+                    <table className="w-full min-w-[900px] border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-left text-sm text-slate-500">
+                          <th className="pb-3 font-semibold">Product</th>
+                          <th className="pb-3 font-semibold">Category</th>
+                          <th className="pb-3 font-semibold">Price</th>
+                          <th className="pb-3 font-semibold">Stock</th>
+                          <th className="pb-3 font-semibold">Condition</th>
+                          <th className="pb-3 font-semibold">Actions</th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {dashboard.listings.map((listing) => {
+                          const productName =
+                            listing.title || listing.name || "Product";
+
+                          return (
+                            <tr
+                              key={listing.id}
+                              className="border-b border-slate-100"
+                            >
+                              <td className="py-4 pr-4">
+                                <div className="flex items-center gap-3">
+                                  {listing.imageUrl ? (
+                                    <img
+                                      src={listing.imageUrl}
+                                      alt={productName}
+                                      className="h-14 w-14 rounded-lg object-cover"
+                                    />
+                                  ) : (
+                                    <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-slate-100 text-xs text-slate-400">
+                                      No Image
+                                    </div>
+                                  )}
+
+                                  <div>
+                                    <p className="font-semibold text-slate-900">
+                                      {productName}
+                                    </p>
+
+                                    <p className="line-clamp-1 text-sm text-slate-500">
+                                      {listing.description || "No description"}
+                                    </p>
                                   </div>
-                                )}
-
-                                <div>
-                                  <p className="font-semibold text-slate-900">
-                                    {productName}
-                                  </p>
-
-                                  <p className="line-clamp-1 text-sm text-slate-500">
-                                    {listing.description || "No description"}
-                                  </p>
                                 </div>
-                              </div>
-                            </td>
+                              </td>
 
-                            <td className="py-4 text-slate-700">
-                              {listing.category || "-"}
-                            </td>
+                              <td className="py-4 text-slate-700">
+                                {listing.category || "-"}
+                              </td>
 
-                            <td className="py-4 font-semibold text-slate-900">
-                              ${Number(listing.price || 0).toFixed(2)}
-                            </td>
+                              <td className="py-4 font-semibold text-slate-900">
+                                ${Number(listing.price || 0).toFixed(2)}
+                              </td>
 
-                            <td className="py-4 text-slate-700">
-                              {listing.stock ?? 0}
-                            </td>
+                              <td className="py-4 text-slate-700">
+                                {listing.stock ?? 0}
+                              </td>
 
-                            <td className="py-4 text-slate-700">
-                              {listing.condition || "-"}
-                            </td>
+                              <td className="py-4 text-slate-700">
+                                {listing.condition || "-"}
+                              </td>
 
-                            <td className="py-4">
-                              <div className="flex gap-2">
-                                <Link
-                                  to={`/products/${listing.id}`}
-                                  className="rounded-md bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
-                                >
-                                  View
-                                </Link>
+                              <td className="py-4">
+                                <div className="flex flex-wrap gap-2">
+                                  <Link
+                                    to={`/products/${listing.id}`}
+                                    className="rounded-md bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                                  >
+                                    View
+                                  </Link>
 
-                                <Link
-                                  to={`/seller/products/${listing.id}/edit`}
-                                  className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                                >
-                                  Edit
-                                </Link>
+                                  <Link
+                                    to={`/seller/products/${listing.id}/edit`}
+                                    className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                                  >
+                                    Edit
+                                  </Link>
 
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleDeleteListing(listing.id)
-                                  }
-                                  disabled={deletingId === listing.id}
-                                  className="rounded-md bg-red-500 px-3 py-2 text-sm font-semibold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                  {deletingId === listing.id
-                                    ? "Deleting..."
-                                    : "Delete"}
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleDeleteListing(listing.id)
+                                    }
+                                    disabled={deletingId === listing.id}
+                                    className="rounded-md bg-red-500 px-3 py-2 text-sm font-semibold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    {deletingId === listing.id
+                                      ? "Deleting..."
+                                      : "Delete"}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-10 border-t border-slate-200 pt-8">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-900">
+                      Auction Listings
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Auction products listed from your seller account.
+                    </p>
+                  </div>
+
+                  <span className="rounded-full bg-purple-100 px-3 py-1 text-sm font-bold text-purple-700">
+                    {dashboard.auctions?.length || 0} items
+                  </span>
+                </div>
+
+                <div className="mt-6 overflow-x-auto">
+                  {dashboard.auctions?.length === 0 ? (
+                    <p className="rounded-xl bg-slate-50 p-5 text-slate-600">
+                      You have not created any auction listings yet.
+                    </p>
+                  ) : (
+                    <table className="w-full min-w-[950px] border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-left text-sm text-slate-500">
+                          <th className="pb-3 font-semibold">Auction</th>
+                          <th className="pb-3 font-semibold">Category</th>
+                          <th className="pb-3 font-semibold">Starting Bid</th>
+                          <th className="pb-3 font-semibold">Current Bid</th>
+                          <th className="pb-3 font-semibold">Status</th>
+                          <th className="pb-3 font-semibold">Condition</th>
+                          <th className="pb-3 font-semibold">Actions</th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {dashboard.auctions.map((auction) => {
+                          const auctionName = auction.title || "Auction Item";
+
+                          return (
+                            <tr
+                              key={auction.id}
+                              className="border-b border-slate-100"
+                            >
+                              <td className="py-4 pr-4">
+                                <div className="flex items-center gap-3">
+                                  {auction.imageUrl ? (
+                                    <img
+                                      src={auction.imageUrl}
+                                      alt={auctionName}
+                                      className="h-14 w-14 rounded-lg object-cover"
+                                    />
+                                  ) : (
+                                    <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-slate-100 text-xs text-slate-400">
+                                      No Image
+                                    </div>
+                                  )}
+
+                                  <div>
+                                    <p className="font-semibold text-slate-900">
+                                      {auctionName}
+                                    </p>
+
+                                    <p className="line-clamp-1 text-sm text-slate-500">
+                                      {auction.description || "No description"}
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="py-4 text-slate-700">
+                                {auction.category || "-"}
+                              </td>
+
+                              <td className="py-4 font-semibold text-slate-900">
+                                ${Number(auction.startingBid || 0).toFixed(2)}
+                              </td>
+
+                              <td className="py-4 font-semibold text-slate-900">
+                                ${Number(auction.currentBid || auction.startingBid || 0).toFixed(2)}
+                              </td>
+
+                              <td className="py-4">
+                                <span className="rounded-full bg-purple-100 px-3 py-1 text-sm font-semibold text-purple-700">
+                                  {formatStatus(auction.status || "pending")}
+                                </span>
+                              </td>
+
+                              <td className="py-4 text-slate-700">
+                                {auction.condition || "-"}
+                              </td>
+
+                              <td className="py-4">
+                                <div className="flex flex-wrap gap-2">
+                                  <Link
+                                    to={`/auctions/${auction.id}`}
+                                    className="rounded-md bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                                  >
+                                    View
+                                  </Link>
+
+                                  <Link
+                                    to={`/seller/auctions/${auction.id}/edit`}
+                                    className="rounded-md bg-purple-700 px-3 py-2 text-sm font-semibold text-white hover:bg-purple-800"
+                                  >
+                                    Edit
+                                  </Link>
+
+                                  <Link
+                                    to="/seller/auctions"
+                                    className="rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                                  >
+                                    Manage
+                                  </Link>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               </div>
             </section>
           </>

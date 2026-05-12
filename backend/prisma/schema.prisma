@@ -33,6 +33,7 @@ model Listing {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   sellerId        String
+  sellerType      String      @default("PRIVATE")
   stock           Int         @default(0)
   deliveryMethods String[]    @default(["SELF_COLLECTION", "STANDARD_DELIVERY"])
   cartItems       CartItem[]
@@ -107,6 +108,7 @@ model Auction {
   paymentDueAt DateTime?
   paidAt       DateTime?
   sellerId     String
+  sellerType   String     @default("PRIVATE")
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   seller       User       @relation("AuctionSeller", fields: [sellerId], references: [id], onDelete: Cascade)

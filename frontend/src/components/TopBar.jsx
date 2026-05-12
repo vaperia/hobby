@@ -147,32 +147,44 @@ export default function TopBar() {
     <div className="bg-gradient-to-r from-purple-700 via-red-600 to-sky-500 text-white">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-2 text-xs">
         <div className="flex items-center gap-4">
-          {isAuthenticated && isSeller ? (
+          {isAuthenticated ? (
             <>
-              <Link to="/seller" className="hover:text-orange-200">
-                Seller Centre
+              <Link to="/create-listing" className="hover:text-orange-200">
+                Sell Item
               </Link>
 
-              <Link to="/seller/shop" className="hover:text-orange-200">
-                My Shop
-              </Link>
-
-              <Link to="/seller/orders" className="hover:text-orange-200">
-                Seller Orders
-              </Link>
-
-              <Link to="/seller/reports" className="hover:text-orange-200">
-                Sales Report
+              <Link to="/create-auction" className="hover:text-orange-200">
+                Create Auction
               </Link>
 
               <Link to="/seller/auctions" className="hover:text-orange-200">
-                Seller Auctions
+                My Selling
               </Link>
+
+              {isSeller && (
+                <>
+                  <Link to="/seller" className="hover:text-orange-200">
+                    Seller Centre
+                  </Link>
+
+                  <Link to="/seller/shop" className="hover:text-orange-200">
+                    My Shop
+                  </Link>
+
+                  <Link to="/seller/orders" className="hover:text-orange-200">
+                    Seller Orders
+                  </Link>
+
+                  <Link to="/seller/reports" className="hover:text-orange-200">
+                    Sales Report
+                  </Link>
+                </>
+              )}
             </>
           ) : (
             <>
-              <Link to="/register" className="hover:text-orange-200">
-                Seller Centre
+              <Link to="/login" className="hover:text-orange-200">
+                Sell Item
               </Link>
 
               <Link to="/register" className="hover:text-orange-200">

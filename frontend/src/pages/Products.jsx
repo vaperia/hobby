@@ -19,6 +19,22 @@ function getAuctionImage(auction) {
   return auction.imageUrl || auction.image_url || auction.image || "";
 }
 
+function SellerTypeBadge({ sellerType }) {
+  const isShopSeller = sellerType === "SHOP";
+
+  return (
+    <span
+      className={`rounded-full px-3 py-1 text-xs font-bold ${
+        isShopSeller
+          ? "bg-blue-100 text-blue-700"
+          : "bg-orange-100 text-orange-700"
+      }`}
+    >
+      {isShopSeller ? "Shop Seller" : "Private Seller"}
+    </span>
+  );
+}
+
 function ProductListingCard({ item }) {
   const image = getProductImage(item);
 
@@ -40,14 +56,18 @@ function ProductListingCard({ item }) {
       )}
 
       <div className="p-5">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-start justify-between gap-2">
           <p className="text-xs font-semibold uppercase text-slate-400">
             {item.category || "Product"}
           </p>
 
-          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
-            Fixed Price
-          </span>
+          <div className="flex flex-wrap justify-end gap-2">
+            <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
+              Fixed Price
+            </span>
+
+            <SellerTypeBadge sellerType={item.sellerType} />
+          </div>
         </div>
 
         <h2 className="mt-3 line-clamp-2 text-lg font-bold text-slate-900">
@@ -59,6 +79,12 @@ function ProductListingCard({ item }) {
         </p>
 
         <p className="mt-2 text-sm text-slate-500">Stock: {item.stock ?? 0}</p>
+
+        {item.seller?.username && (
+          <p className="mt-1 text-sm text-slate-500">
+            Sold by {item.seller.username}
+          </p>
+        )}
 
         <div className="mt-4 rounded-md bg-slate-100 px-3 py-2 text-center text-sm font-semibold text-slate-700">
           View Product
@@ -90,19 +116,29 @@ function AuctionListingCard({ item }) {
       )}
 
       <div className="p-5">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-start justify-between gap-2">
           <p className="text-xs font-semibold uppercase text-slate-400">
             {item.category || "Auction"}
           </p>
 
-          <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700">
-            Auction
-          </span>
+          <div className="flex flex-wrap justify-end gap-2">
+            <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700">
+              Auction
+            </span>
+
+            <SellerTypeBadge sellerType={item.sellerType} />
+          </div>
         </div>
 
         <h2 className="mt-3 line-clamp-2 text-lg font-bold text-slate-900">
           {item.title || "Auction Item"}
         </h2>
+
+        {item.seller?.username && (
+          <p className="mt-2 text-sm text-slate-500">
+            Sold by {item.seller.username}
+          </p>
+        )}
 
         <div className="mt-4 space-y-2 text-sm text-slate-600">
           <p>
